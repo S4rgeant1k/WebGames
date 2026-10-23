@@ -6,7 +6,7 @@ import {
   consolationPrize, caseExpectedValue, fmt, fmtShort
 } from './economy.js';
 import { sha256Hex, betString } from './fair.js';
-import { itemArt, categoryIcon } from './art.js';
+import { itemArt, categoryIcon, steamImage, installImageFallback } from './art.js';
 import { sfx, setSoundEnabled } from './audio.js';
 import {
   state, load, save, resetAll, ensureSeeds, rotateSeed,
@@ -156,7 +156,9 @@ window.addEventListener('hashchange', route);
 // ══════════════════════════════════════════════════════════════════════════
 // АПГРЕЙД
 // ══════════════════════════════════════════════════════════════════════════
-const up = { stake: [], targetId: null, spinning: false, rotation: 0 };
+// snap — «снимок» ставки на время прокрутки и показа результата,
+// чтобы колесо не обнулялось, когда предметы уже списаны.
+const up = { stake: [], targetId: null, spinning: false, rotation: 0, snap: null };
 const MAX_STAKE = 6;
 
 function stakeItemsValue() {
@@ -217,7 +219,7 @@ function renderStakeSlot() {
   } else if (items.length === 1) {
     const { item } = items[0];
     const r = RARITY_BY_ID[item.rarity];
-    body.innerHTML = `<div class="slot-big">${itemArt(item, { uid: artUid++ })}
+    body.innerHTML = `<div class="slot-big" style="${rarityStyle(item)}">${itemArt(item, { uid: artUid++ })}
       <div class="sb-weapon">${item.weapon}</div><div class="sb-skin">${item.skin}</div>
       <span class="sb-rarity" style="background:${r.color}22;color:${r.color}">${r.name}</span></div>`;
   } else {
@@ -237,20 +239,22 @@ function renderTargetSlot() {
     return;
   }
   const r = RARITY_BY_ID[t.rarity];
-  body.innerHTML = `<div class="slot-big">${itemArt(t, { uid: artUid++ })}
+  body.innerHTML = `<div class="slot-big" style="${rarityStyle(t)}">${itemArt(t, { uid: artUid++ })}
     <div class="sb-weapon">${t.weapon}</div><div class="sb-skin">${t.skin}</div>
     <span class="sb-rarity" style="background:${r.color}22;color:${r.color}">${r.name}</span></div>`;
   $('#targetValue').textContent = fmt(t.price);
 }
 
 function renderWheelInfo() {
-  const chance = currentChance();
   const t = ITEM_BY_ID[up.targetId];
   const s = stakeTotal();
+  // что показываем на колесе: снимок (во время/после прокрутки) или текущий выбор
+  const shown = up.snap || { chance: currentChance(), total: s, price: t?.price || 0 };
+  const chance = shown.chance;
   $('#wheelSector').setAttribute('d', sectorPath(chance));
   $('#chanceValue').textContent = chance ? chance.toFixed(2).replace('.', ',') + '%' : '—';
   $('#chanceValue').style.color = chance ? chanceColor(chance) : '';
-  $('#multValue').textContent = t && s > 0 ? 'x' + multiplierFor(s, t.price).toFixed(2) : 'x0.00';
+  $('#multValue').textContent = shown.price && shown.total > 0 ? 'x' + multiplierFor(shown.total, shown.price).toFixed(2) : 'x0.00';
 
   const btn = $('#upgradeBtn');
   let reason = '';
@@ -317,6 +321,8 @@ function afterStakeChange() {
 }
 
 function resetWheelLook() {
+  if (up.spinning) return;
+  up.snap = null;
   $('#wheel').classList.remove('win', 'lose');
   $('#wheelResult').textContent = '';
   $('#wheelResult').className = 'wheel-result';
@@ -383,7 +389,10 @@ async function doUpgrade() {
   state.balance -= balPart;
   renderHeader();
   save();
-  resetWheelLook();
+  up.snap = { chance, total, price: target.price };
+  $('#wheel').classList.remove('win', 'lose');
+  $('#wheelResult').textContent = '';
+  $('#wheelResult').className = 'wheel-result';
   renderWheelInfo();
   $$('#page-upgrade .picker').forEach(p => p.style.pointerEvents = 'none');
 
@@ -486,7 +495,10 @@ function showUpgradeResult(res, target, total, chance, consolation, nonce) {
 const cs = { caseId: null, qty: 1, spinning: false, lastDrops: [] };
 
 function caseBoxHTML(c) {
-  return `<div class="case-box"><div class="body"></div><div class="lid"></div><div class="lock"></div><div class="stripe"></div></div>`;
+  return `<div class="case-box">
+    <div class="body"></div><div class="lid"></div><div class="lock"></div><div class="stripe"></div>
+    ${c.img ? `<img class="crate-img" src="${steamImage(c.img, '256fx256f')}" alt="${c.name}" loading="lazy" referrerpolicy="no-referrer" draggable="false">` : ''}
+  </div>`;
 }
 
 function renderCases() {
@@ -571,7 +583,8 @@ function fitRouletteCards() {
     r.querySelectorAll('.card').forEach(card => {
       card.style.height = h + 'px';
       card.style.flexBasis = Math.round(h * 1.03) + 'px';
-      card.querySelector('svg').style.height = Math.max(34, h - 80) + 'px';
+      const art = card.querySelector('svg, img');
+      if (art) art.style.height = Math.max(34, h - 80) + 'px';
     });
   });
 }
@@ -982,6 +995,7 @@ function botTick() {
 // СТАРТ
 // ══════════════════════════════════════════════════════════════════════════
 async function init() {
+  installImageFallback(id => ITEM_BY_ID[id]);
   load();
   await ensureSeeds();
   setSoundEnabled(state.settings.sound);

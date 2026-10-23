@@ -90,12 +90,12 @@ test('SHA-256: WebCrypto и резервная реализация совпад
 });
 
 test('pickFromPool учитывает веса', () => {
-  const pool = [['p9_ash', 3], ['ak_blue', 1]];
+  const pool = [['p250_sand_dune', 3], ['ak_47_redline', 1]];
   let a = 0;
-  for (let i = 0; i < 20000; i++) if (pickFromPool(pool).id === 'p9_ash') a++;
+  for (let i = 0; i < 20000; i++) if (pickFromPool(pool).id === 'p250_sand_dune') a++;
   assert.ok(Math.abs(a / 20000 - 0.75) < 0.02);
-  assert.equal(pickFromPool(pool, () => 0).id, 'p9_ash');
-  assert.equal(pickFromPool(pool, () => 0.9999).id, 'ak_blue');
+  assert.equal(pickFromPool(pool, () => 0).id, 'p250_sand_dune');
+  assert.equal(pickFromPool(pool, () => 0.9999).id, 'ak_47_redline');
 });
 
 test('цели апгрейда дороже ставки и отсортированы', () => {
@@ -111,6 +111,12 @@ test('утешительный приз: иногда есть, дешевле �
   assert.equal(consolationPrize(10000, () => 0.99), null);
   const p = consolationPrize(10000, () => 0);
   assert.ok(p && p.price < 10000);
+});
+
+test('у всех скинов есть картинка Steam, знаменитые скины на месте', () => {
+  for (const i of ITEMS) assert.match(i.img, /^[A-Za-z0-9_-]{40,}$/, 'картинка ' + i.id);
+  for (const id of ['ak_47_redline', 'awp_dragon_lore', 'm4a4_howl', 'karambit_fade'])
+    assert.ok(ITEM_BY_ID[id], 'нет ' + id);
 });
 
 test('форматирование чисел', () => {

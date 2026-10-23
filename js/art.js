@@ -87,8 +87,53 @@ function hashString(str) {
   return h >>> 0;
 }
 
-/** SVG-картинка предмета. */
-export function itemArt(item, { uid = 0, bg = true } = {}) {
+// Картинки скинов — официальный CDN Steam. Если основной сервер недоступен,
+// пробуем зеркало на Cloudflare, а затем рисуем SVG-силуэт (см. installImageFallback).
+export const STEAM_CDN = 'https://community.akamai.steamstatic.com/economy/image/';
+export const STEAM_CDN_ALT = 'https://community.cloudflare.steamstatic.com/economy/image/';
+
+export const steamImage = (path, size = '360fx360f', cdn = STEAM_CDN) => `${cdn}${path}/${size}`;
+
+/** Картинка предмета: фото скина из Steam или SVG, если фото нет. */
+export function itemArt(item, opts = {}) {
+  if (item.img) {
+    return `<img class="skin-img" src="${steamImage(item.img)}" data-id="${item.id}" alt="${item.weapon} | ${item.skin}" loading="lazy" decoding="async" referrerpolicy="no-referrer" draggable="false">`;
+  }
+  return itemSvg(item, opts);
+}
+
+/**
+ * Глобальный обработчик ошибок загрузки картинок:
+ * akamai → cloudflare → SVG-силуэт. findItem(id) возвращает предмет по id.
+ */
+export function installImageFallback(findItem) {
+  document.addEventListener('error', e => {
+    const img = e.target;
+    if (!(img instanceof HTMLImageElement)) return;
+    if (img.classList.contains('skin-img')) {
+      if (!img.dataset.alt && img.src.startsWith(STEAM_CDN)) {
+        img.dataset.alt = '1';
+        img.src = img.src.replace(STEAM_CDN, STEAM_CDN_ALT);
+        return;
+      }
+      const item = findItem(img.dataset.id);
+      if (!item) return;
+      const tpl = document.createElement('template');
+      tpl.innerHTML = itemSvg(item, { uid: Math.random().toString(36).slice(2, 8) }).trim();
+      img.replaceWith(tpl.content.firstChild);
+    } else if (img.classList.contains('crate-img')) {
+      if (!img.dataset.alt && img.src.startsWith(STEAM_CDN)) {
+        img.dataset.alt = '1';
+        img.src = img.src.replace(STEAM_CDN, STEAM_CDN_ALT);
+        return;
+      }
+      img.remove(); // останется нарисованный CSS-ящик
+    }
+  }, true);
+}
+
+/** SVG-силуэт предмета (запасной вариант, работает офлайн). */
+export function itemSvg(item, { uid = 0, bg = true } = {}) {
   const paths = SHAPES[item.cat] || SHAPES.rifle;
   const pal = PALETTES[hashString(item.skin + item.weapon) % PALETTES.length];
   const gid = `g${uid}_${hashString(item.id)}`;
