@@ -1,0 +1,31 @@
+// Минимальный статический сервер без зависимостей: npm start
+import { createServer } from 'node:http';
+import { readFile, stat } from 'node:fs/promises';
+import { extname, join, normalize } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = fileURLToPath(new URL('.', import.meta.url));
+const PORT = Number(process.env.PORT) || 8080;
+const HOST = process.env.HOST || '0.0.0.0';
+const TYPES = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.ico': 'image/x-icon'
+};
+
+createServer(async (req, res) => {
+  try {
+    let path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    if (path.endsWith('/')) path += 'index.html';
+    const file = normalize(join(ROOT, path));
+    if (!file.startsWith(ROOT) || /[\\/]\.|node_modules|tests[\\/]/.test(file.slice(ROOT.length))) {
+      res.writeHead(403).end('Forbidden'); return;
+    }
+    const s = await stat(file);
+    if (!s.isFile()) throw new Error('not file');
+    res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
+    res.end(await readFile(file));
+  } catch {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Не найдено');
+  }
+}).listen(PORT, HOST, () => console.log(`UPGRADER SIM: http://${HOST}:${PORT}`));
