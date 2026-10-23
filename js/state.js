@@ -21,6 +21,9 @@ function freshState() {
     lastCredit: 0,
     fair: { serverSeed: '', serverHash: '', clientSeed: '', nonce: 0, revealed: [] },
     settings: { sound: true, fast: false },
+    playerId: 100000 + Math.floor(Math.random() * 900000),
+    nickname: 'Игрок',
+    usedPromos: [],
     createdAt: Date.now()
   };
 }

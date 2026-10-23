@@ -97,5 +97,7 @@ export const CONFIG = {
   demoCreditMinBalance: 1000,
   demoCreditCooldownMs: 10 * 60 * 1000,
   maxHistory: 40,
+  // Купоны (виртуальные монеты, каждый — один раз)
+  promoCodes: { GITHUB: 10000, UPGRADER: 5000, CS2: 3000 },
   storageKey: 'upgrader-sim-save-v2'
 };

@@ -1,9 +1,9 @@
-// Интерфейс игры: роутинг, апгрейд, кейсы, рынок, инвентарь, профиль.
+// Интерфейс игры: роутинг, апгрейд, кейсы, рынок, инвентарь, профиль, лента.
 
 import { ITEMS, ITEM_BY_ID, RARITIES, RARITY_BY_ID, CATEGORIES, CASES, CASE_BY_ID, CONFIG } from './data.js';
 import {
   chanceFor, multiplierFor, resolveUpgrade, pickFromPool, hashToInt,
-  consolationPrize, caseExpectedValue, fmt, fmtShort
+  consolationPrize, fmt, fmtShort
 } from './economy.js';
 import { sha256Hex, betString } from './fair.js';
 import { itemArt, categoryIcon, steamImage, installImageFallback } from './art.js';
@@ -18,8 +18,37 @@ const $ = sel => document.querySelector(sel);
 const $$ = sel => [...document.querySelectorAll(sel)];
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const rand = (a, b) => a + Math.random() * (b - a);
 let artUid = 0;
 
+// ── Иконки ────────────────────────────────────────────────────────────────
+const CHEV_PATH = 'M0 16 20 2l20 14v8L20 10 0 24z';
+const CHEV2_PATH = 'M5 28 20 17.5 35 28v6L20 23.5 5 34z';
+const ICON = {
+  chev: `<svg viewBox="0 0 40 34"><path d="${CHEV_PATH}"/></svg>`,
+  soundOn: '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>',
+  soundOff: '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9zm18.3 6.9-1.4 1.4L17 14.4l-2.9 2.9-1.4-1.4 2.9-2.9-2.9-2.9 1.4-1.4 2.9 2.9 2.9-2.9 1.4 1.4-2.9 2.9z"/></svg>'
+};
+const chevStack = dir => {
+  const d = dir === 'down' ? 'M0 0 33 18 66 0v11L33 30 0 11z' : 'M0 30 33 12 66 30V19L33 0 0 19z';
+  return `<div class="chevs ${dir}">${[0, 1, 2].map(() => `<svg viewBox="0 0 66 30"><path d="${d}" fill="#ffd200"/></svg>`).join('')}</div>`;
+};
+const bigChevron = () => `<svg class="wc-chev" viewBox="0 0 40 34" aria-hidden="true">
+  <defs><linearGradient id="cg1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe14d"/><stop offset="1" stop-color="#ffc400"/></linearGradient></defs>
+  <path d="${CHEV_PATH}" fill="url(#cg1)"/><path d="${CHEV2_PATH}" fill="#8f7500"/></svg>`;
+
+function avatarSVG(seed) {
+  const h = (seed * 47) % 360;
+  return `<svg viewBox="0 0 64 64" aria-hidden="true">
+    <defs><linearGradient id="av${seed}" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="hsl(${h},70%,55%)"/><stop offset="1" stop-color="hsl(${(h + 40) % 360},70%,30%)"/></linearGradient></defs>
+    <rect width="64" height="64" fill="url(#av${seed})"/>
+    <circle cx="32" cy="25" r="12" fill="rgba(0,0,0,.35)"/>
+    <path d="M8 64c2-15 12-22 24-22s22 7 24 22z" fill="rgba(0,0,0,.35)"/>
+  </svg>`;
+}
+
+// ── Тосты и модалки ───────────────────────────────────────────────────────
 function toast(msg, err = false) {
   const t = document.createElement('div');
   t.className = 'toast' + (err ? ' err' : '');
@@ -32,7 +61,7 @@ function toast(msg, err = false) {
 function openModal(html, cls = '') {
   const box = $('#modalBox');
   box.className = 'modal-box ' + cls;
-  box.innerHTML = html;
+  box.innerHTML = `<button class="m-close" data-close aria-label="Закрыть">×</button>${html}`;
   $('#modal').classList.remove('hidden');
 }
 function closeModal() { $('#modal').classList.add('hidden'); }
@@ -41,54 +70,58 @@ $('#modal').addEventListener('click', e => {
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
-function rarityStyle(item) {
-  return `--rc:${RARITY_BY_ID[item.rarity].color}`;
+const rcolor = item => RARITY_BY_ID[item.rarity].color;
+const rarityStyle = item => `--rc:${rcolor(item)}`;
+
+function chanceColor(c) {
+  if (c >= 60) return '#9be15d';
+  if (c >= 30) return '#ffd200';
+  if (c >= 15) return '#ff9d3a';
+  return '#ff5c5c';
 }
 
-/** HTML карточки предмета. */
+/** Карточка предмета в стиле апгрейдера. */
 function cardHTML(item, { uid = '', cls = '', chance = null, actions = '', check = false, extra = '' } = {}) {
   return `<div class="card ${cls}" style="${rarityStyle(item)}" data-id="${item.id}" ${uid !== '' ? `data-uid="${uid}"` : ''}>
     ${check ? '<span class="c-check"></span>' : ''}
-    ${chance !== null ? `<span class="c-chance" style="color:${chanceColor(chance)}">${chance.toFixed(1)}%</span>` : ''}
-    ${extra}
+    <div class="c-top">
+      <span class="c-price"><span class="coin"></span>${fmt(item.price)}</span>
+      ${chance !== null ? `<span class="c-chance" style="color:${chanceColor(chance)}">${chance.toFixed(1)}%</span>` : ''}
+      ${extra}
+    </div>
     ${itemArt(item, { uid: artUid++ })}
+    <div class="c-name" title="${item.skin}">${item.skin}</div>
     <div class="c-weapon" title="${item.weapon}">${item.weapon}</div>
-    <div class="c-skin" title="${item.skin}">${item.skin}</div>
-    <div class="c-price">◆ ${fmt(item.price)}</div>
     ${actions ? `<div class="c-actions">${actions}</div>` : ''}
   </div>`;
 }
 
-function chanceColor(c) {
-  if (c >= 60) return '#34d399';
-  if (c >= 30) return '#facc15';
-  if (c >= 15) return '#fb923c';
-  return '#f87171';
+// ── Шапка: баланс, счётчики, бонус, звук ──────────────────────────────────
+let shownBalance = 0;
+function animateNumber(el, from, to, dur = 450) {
+  if (from === to) { el.textContent = fmt(to); return; }
+  const t0 = performance.now();
+  const step = now => {
+    const k = Math.min(1, (now - t0) / dur);
+    el.textContent = fmt(from + (to - from) * (1 - Math.pow(1 - k, 3)));
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
 }
 
-// ── Баланс / шапка ────────────────────────────────────────────────────────
-let shownBalance = 0;
 function renderHeader(bump = false) {
-  const target = state.balance;
-  const el = $('#balance');
-  const from = shownBalance;
-  shownBalance = target;
-  if (from === target) { el.textContent = fmt(target); }
-  else {
-    const t0 = performance.now(), dur = 450;
-    const step = now => {
-      const k = Math.min(1, (now - t0) / dur);
-      el.textContent = fmt(from + (target - from) * (1 - Math.pow(1 - k, 3)));
-      if (k < 1) requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  }
+  animateNumber($('#balance'), shownBalance, state.balance);
+  shownBalance = state.balance;
   if (bump) {
-    const b = $('.balance');
+    const b = $('.balance-box');
     b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump');
   }
   $('#invCount').textContent = state.inventory.length;
-  $('#soundBtn').textContent = state.settings.sound ? '🔊' : '🔇';
+  const snd = state.settings.sound ? ICON.soundOn : ICON.soundOff;
+  $('#soundBtn').innerHTML = snd;
+  $('#soundTool').innerHTML = snd;
+  $('#fastTool').classList.toggle('on', !!state.settings.fast);
+  $('#topAvatar').innerHTML = avatarSVG(state.playerId);
   renderDaily();
 }
 
@@ -97,45 +130,87 @@ function changeBalance(delta) {
   renderHeader(delta > 0);
 }
 
-// ── Ежедневный бонус ──────────────────────────────────────────────────────
+// «Живые» счётчики сайта (симуляция)
+const counters = { online: 5536, upgrades: 553013936, cases: 462065 };
+function renderCounters() {
+  $('#cOnline').textContent = fmt(counters.online);
+  $('#cUpgrades').textContent = fmt(counters.upgrades);
+  $('#cCases').textContent = fmt(counters.cases);
+}
+setInterval(() => {
+  counters.online = Math.round(Math.min(7200, Math.max(4200, counters.online + rand(-60, 64))));
+  counters.upgrades += Math.floor(rand(3, 18));
+  renderCounters();
+}, 2500);
+
+// Ежедневный бонус
 const DAY = 24 * 3600 * 1000;
-function dailyReady() { return Date.now() - state.daily.last >= DAY; }
+const dailyReady = () => Date.now() - state.daily.last >= DAY;
 function dailyAmount() {
   const streak = Date.now() - state.daily.last < 2 * DAY ? state.daily.streak + 1 : 1;
   return { streak, amount: CONFIG.dailyBonus + Math.min(streak - 1, 6) * CONFIG.dailyStreakBonus };
 }
+function dailyLeftText() {
+  const left = DAY - (Date.now() - state.daily.last);
+  const h = Math.floor(left / 3600000), m = Math.floor((left % 3600000) / 60000);
+  return `${h}ч ${String(m).padStart(2, '0')}м`;
+}
 function renderDaily() {
+  const ready = dailyReady();
   const btn = $('#dailyBtn');
-  if (dailyReady()) {
-    btn.classList.add('ready');
-    $('#dailyLabel').textContent = 'Забрать бонус';
-  } else {
-    btn.classList.remove('ready');
-    const left = DAY - (Date.now() - state.daily.last);
-    const h = Math.floor(left / 3600000), m = Math.floor((left % 3600000) / 60000);
-    $('#dailyLabel').textContent = `${h}ч ${String(m).padStart(2, '0')}м`;
+  btn.classList.toggle('ready', ready);
+  btn.classList.toggle('cooldown', !ready);
+  $('#dailyLabel').textContent = ready ? 'Бонус' : dailyLeftText();
+  const pf = $('#pfDailyBtn');
+  if (pf) {
+    pf.disabled = !ready;
+    $('#pfDailyLabel').textContent = ready ? `Забрать бонус ${fmt(dailyAmount().amount)}` : `Бонус через ${dailyLeftText()}`;
   }
 }
-$('#dailyBtn').addEventListener('click', () => {
-  if (!dailyReady()) { toast('Бонус уже получен. Возвращайтесь позже!', true); return; }
+function claimDaily() {
+  if (!dailyReady()) { toast(`Бонус уже получен. Следующий через ${dailyLeftText()}`, true); return; }
   const { streak, amount } = dailyAmount();
   state.daily = { last: Date.now(), streak };
   changeBalance(amount);
   pushHistory({ type: 'daily', amount });
   save();
   sfx.coin();
-  openModal(`<h2>🎁 Ежедневный бонус</h2>
-    <p class="muted">Серия: ${streak} ${streak > 1 ? 'дня подряд' : 'день'} (до +${fmt(6 * CONFIG.dailyStreakBonus)} за серию)</p>
-    <div style="font-size:40px;font-weight:900;color:var(--gold);margin:14px 0">+ ◆ ${fmt(amount)}</div>
-    <div class="m-actions"><button class="btn btn-primary" data-close>Отлично</button></div>`, 'win');
-});
+  openModal(`<h2>Ежедневный бонус</h2>
+    <p class="muted">Серия: ${streak} ${streak > 1 ? 'дня подряд' : 'день'} · за серию до +${fmt(6 * CONFIG.dailyStreakBonus)}</p>
+    <div class="m-big">+ ${fmt(amount)} <span class="coin coin-lg"></span></div>
+    <div class="m-actions"><button class="btn btn-yellow" data-close>Отлично</button></div>`, 'gold');
+  if (currentPage === 'profile') renderProfile();
+}
+$('#dailyBtn').addEventListener('click', claimDaily);
 setInterval(renderDaily, 30000);
 
-$('#soundBtn').addEventListener('click', () => {
+function toggleSound() {
   state.settings.sound = !state.settings.sound;
   setSoundEnabled(state.settings.sound);
   save(); renderHeader(); sfx.click();
+}
+$('#soundBtn').addEventListener('click', toggleSound);
+$('#soundTool').addEventListener('click', toggleSound);
+$('#fastTool').addEventListener('click', () => {
+  state.settings.fast = !state.settings.fast;
+  save(); renderHeader(); sfx.click();
+  toast(state.settings.fast ? 'Быстрая прокрутка включена' : 'Быстрая прокрутка выключена');
 });
+$('#infoBtn').addEventListener('click', showRules);
+
+function showRules() {
+  openModal(`<h2>Как играть</h2>
+    <div class="m-text">
+      <p><b>1.</b> Выберите предметы из инвентаря (до 6) и/или сумму баланса ползунком.</p>
+      <p><b>2.</b> Выберите предмет, который хотите получить. Чем он дороже ставки — тем ниже шанс.
+        Кнопки <b>x2 / x3 / x4</b> подбирают цель по множителю, <b>60% / 70% / 80%</b> — по шансу.</p>
+      <p><b>3.</b> Нажмите <b>«Улучшить»</b>. Если стрелка остановится в жёлтой зоне — предмет ваш.
+        Иначе ставка сгорает (иногда выпадает утешительный приз).</p>
+      <p>⚡ — быстрая прокрутка. Каждый день забирайте бонус, а купоны вводите в профиле.</p>
+      <p class="muted">Все монеты виртуальные. Реальные деньги не используются.</p>
+    </div>
+    <div class="m-actions"><button class="btn btn-yellow" data-close>Понятно</button></div>`, 'gold');
+}
 
 // ── Роутер ────────────────────────────────────────────────────────────────
 const PAGES = ['upgrade', 'cases', 'market', 'inventory', 'profile'];
@@ -158,36 +233,36 @@ window.addEventListener('hashchange', route);
 // ══════════════════════════════════════════════════════════════════════════
 // snap — «снимок» ставки на время прокрутки и показа результата,
 // чтобы колесо не обнулялось, когда предметы уже списаны.
-const up = { stake: [], targetId: null, spinning: false, rotation: 0, snap: null };
+const up = { stake: [], targetId: null, spinning: false, rotation: 0, snap: null, result: null };
 const MAX_STAKE = 6;
+const WHEEL = { cx: 150, cy: 150, r: 112, rOuter: 144 };
 
-function stakeItemsValue() {
-  return up.stake.reduce((s, uid) => s + (ITEM_BY_ID[invItem(uid)?.id]?.price || 0), 0);
-}
+const stakeItemsValue = () => up.stake.reduce((s, uid) => s + (ITEM_BY_ID[invItem(uid)?.id]?.price || 0), 0);
 function stakeBalanceValue() {
   const v = Math.floor(Number($('#stakeBalance').value) || 0);
-  return Math.max(0, v);
+  return Math.max(0, Math.min(v, state.balance));
 }
-function stakeTotal() { return stakeItemsValue() + stakeBalanceValue(); }
+const stakeTotal = () => stakeItemsValue() + stakeBalanceValue();
 
-function sectorPath(chance) {
-  const cx = 100, cy = 100, r = 86;
-  const a = Math.min(chance, 99.99) / 100 * Math.PI * 2;
-  const x = cx + r * Math.sin(a), y = cy - r * Math.cos(a);
-  const large = chance > 50 ? 1 : 0;
-  return chance <= 0 ? '' : `M ${cx} ${cy - r} A ${r} ${r} 0 ${large} 1 ${x.toFixed(2)} ${y.toFixed(2)}`;
+/** Дуга сектора шанса, симметричная относительно низа колеса. */
+function arcPath(r, chance) {
+  if (!(chance > 0)) return '';
+  const { cx, cy } = WHEEL;
+  const deg = Math.min(chance, 99.9) / 100 * 360;
+  const half = deg / 2 * Math.PI / 180;
+  const sx = cx + r * Math.sin(half), sy = cy + r * Math.cos(half);
+  const ex = cx - r * Math.sin(half), ey = cy + r * Math.cos(half);
+  return `M ${sx.toFixed(2)} ${sy.toFixed(2)} A ${r} ${r} 0 ${deg > 180 ? 1 : 0} 1 ${ex.toFixed(2)} ${ey.toFixed(2)}`;
 }
 
 function buildTicks() {
-  const g = $('#wheelTicks');
   let s = '';
-  for (let i = 0; i < 40; i++) {
-    const a = i / 40 * Math.PI * 2;
-    const r1 = 74, r2 = i % 5 === 0 ? 98 : 96;
-    s += `<line x1="${100 + r1 * Math.sin(a)}" y1="${100 - r1 * Math.cos(a)}" x2="${100 + r2 * Math.sin(a)}" y2="${100 - r2 * Math.cos(a)}"/>`;
+  for (let i = 0; i < 72; i++) {
+    const a = i / 72 * Math.PI * 2;
+    const r1 = 131, r2 = 136;
+    s += `<line x1="${(150 + r1 * Math.sin(a)).toFixed(1)}" y1="${(150 - r1 * Math.cos(a)).toFixed(1)}" x2="${(150 + r2 * Math.sin(a)).toFixed(1)}" y2="${(150 - r2 * Math.cos(a)).toFixed(1)}"/>`;
   }
-  g.innerHTML = s;
-  g.classList.add('wheel-ticks');
+  $('#wheelTicks').innerHTML = s;
 }
 
 function currentChance() {
@@ -198,10 +273,8 @@ function currentChance() {
 }
 
 function renderUpgrade() {
-  // убираем из ставки проданные предметы
   up.stake = up.stake.filter(uid => invItem(uid));
-  if (stakeBalanceValue() > state.balance) $('#stakeBalance').value = state.balance;
-
+  syncSlider();
   renderStakeSlot();
   renderTargetSlot();
   renderWheelInfo();
@@ -209,61 +282,96 @@ function renderUpgrade() {
   renderUpTargets();
 }
 
+function syncSlider() {
+  const sl = $('#stakeBalance');
+  sl.max = String(state.balance);
+  if (Number(sl.value) > state.balance) sl.value = String(state.balance);
+  const v = stakeBalanceValue();
+  sl.style.setProperty('--fill', state.balance > 0 ? (v / state.balance * 100) + '%' : '0%');
+  sl.step = state.balance > 20000 ? '100' : state.balance > 2000 ? '10' : '1';
+  $('#stakeBalanceLabel').textContent = fmt(v);
+  $('#stakeBalanceMax').textContent = fmt(state.balance);
+}
+
+function upItemHTML(item) {
+  return `<div class="up-item" style="${rarityStyle(item)}">
+    ${itemArt(item, { uid: artUid++ })}
+    <div class="up-item-name">${item.skin}</div>
+    <div class="up-item-weapon">${item.weapon}</div>
+    <div class="up-item-price"><span class="coin"></span>${fmt(item.price)}</div>
+  </div>`;
+}
+
 function renderStakeSlot() {
   const body = $('#stakeBody');
   const items = up.stake.map(uid => ({ uid, item: ITEM_BY_ID[invItem(uid).id] }));
-  if (!items.length) {
-    const bal = stakeBalanceValue();
-    body.innerHTML = `<div class="slot-empty">${categoryIcon('rifle')}
-      <div>${bal > 0 ? `Ставка с баланса: <b style="color:var(--gold)">◆ ${fmt(bal)}</b>` : 'Выберите предметы из инвентаря ниже<br>или поставьте монеты с баланса'}</div></div>`;
-  } else if (items.length === 1) {
-    const { item } = items[0];
-    const r = RARITY_BY_ID[item.rarity];
-    body.innerHTML = `<div class="slot-big" style="${rarityStyle(item)}">${itemArt(item, { uid: artUid++ })}
-      <div class="sb-weapon">${item.weapon}</div><div class="sb-skin">${item.skin}</div>
-      <span class="sb-rarity" style="background:${r.color}22;color:${r.color}">${r.name}</span></div>`;
-  } else {
-    body.innerHTML = `<div class="stake-multi">${items.map(({ uid, item }) => cardHTML(item, { uid, cls: 'clickable' })).join('')}</div>`;
-    body.querySelectorAll('.card').forEach(c => c.addEventListener('click', () => toggleStake(Number(c.dataset.uid))));
+  const bal = stakeBalanceValue();
+  if (!items.length && !bal) {
+    body.innerHTML = `
+      <div class="up-empty-title">Выберите предметы и/или баланс для использования</div>
+      <div class="up-empty-sub">Вы можете выбрать несколько предметов</div>
+      <div class="up-sil">${categoryIcon('rifle', '#141414')}</div>
+      ${chevStack('down')}`;
+    return;
   }
-  $('#stakeItemsValue').textContent = fmt(stakeItemsValue());
-  $('#stakeTotal').textContent = fmt(stakeTotal());
+  if (!items.length) {
+    body.innerHTML = `<div class="up-item" style="--rc:#ffd200">
+      <span class="coin" style="width:130px;height:130px;filter:drop-shadow(0 12px 24px rgba(255,190,0,.35))"></span>
+      <div class="up-item-name" style="margin-top:14px">Баланс</div>
+      <div class="up-item-price"><span class="coin"></span>${fmt(bal)}</div></div>`;
+    return;
+  }
+  if (items.length === 1) {
+    body.innerHTML = upItemHTML(items[0].item) +
+      (bal ? `<div class="up-panel-foot">+ <span class="coin"></span><b>${fmt(bal)}</b> с баланса</div>` : '');
+    return;
+  }
+  body.innerHTML = `<div class="up-empty-title">Выбрано предметов: ${items.length}</div>
+    <div class="stake-multi">${items.map(({ uid, item }) => cardHTML(item, { uid, cls: 'clickable' })).join('')}</div>
+    <div class="up-panel-foot">Итого: <span class="coin"></span><b>${fmt(stakeTotal())}</b>${bal ? ` (вкл. ${fmt(bal)} с баланса)` : ''}</div>`;
+  body.querySelectorAll('.card').forEach(c => c.addEventListener('click', () => toggleStake(Number(c.dataset.uid))));
 }
 
 function renderTargetSlot() {
   const body = $('#targetBody');
   const t = ITEM_BY_ID[up.targetId];
   if (!t) {
-    body.innerHTML = `<div class="slot-empty">${categoryIcon('knife')}<div>Выберите предмет, который хотите получить</div></div>`;
-    $('#targetValue').textContent = '0';
+    body.innerHTML = `
+      <div class="up-empty-title">Выберите предмет для апгрейда</div>
+      <div class="up-sil">${categoryIcon('rifle', '#141414')}</div>
+      ${chevStack('up')}`;
     return;
   }
-  const r = RARITY_BY_ID[t.rarity];
-  body.innerHTML = `<div class="slot-big" style="${rarityStyle(t)}">${itemArt(t, { uid: artUid++ })}
-    <div class="sb-weapon">${t.weapon}</div><div class="sb-skin">${t.skin}</div>
-    <span class="sb-rarity" style="background:${r.color}22;color:${r.color}">${r.name}</span></div>`;
-  $('#targetValue').textContent = fmt(t.price);
+  body.innerHTML = upItemHTML(t);
 }
 
 function renderWheelInfo() {
   const t = ITEM_BY_ID[up.targetId];
   const s = stakeTotal();
-  // что показываем на колесе: снимок (во время/после прокрутки) или текущий выбор
   const shown = up.snap || { chance: currentChance(), total: s, price: t?.price || 0 };
   const chance = shown.chance;
-  $('#wheelSector').setAttribute('d', sectorPath(chance));
-  $('#chanceValue').textContent = chance ? chance.toFixed(2).replace('.', ',') + '%' : '—';
-  $('#chanceValue').style.color = chance ? chanceColor(chance) : '';
-  $('#multValue').textContent = shown.price && shown.total > 0 ? 'x' + multiplierFor(shown.total, shown.price).toFixed(2) : 'x0.00';
+  $('#wheelSector').setAttribute('d', arcPath(WHEEL.r, chance));
+  $('#wheelSectorOuter').setAttribute('d', arcPath(WHEEL.rOuter, chance));
+
+  const center = $('#wheelCenter');
+  if (up.result) {
+    center.innerHTML = `<div class="wc-result ${up.result}">${up.result === 'win' ? 'Победа!' : 'Не повезло'}</div>
+      <div class="wc-label" style="color:#8a8a8a">шанс был ${chance.toFixed(2)}%</div>`;
+  } else if (chance) {
+    center.innerHTML = `<div class="wc-chance" style="color:${chanceColor(chance)}">${chance.toFixed(2)}%</div>
+      <div class="wc-label" style="color:${chanceColor(chance)}">шанс апгрейда</div>
+      <div class="wc-mult">x${multiplierFor(shown.total, shown.price).toFixed(2)}</div>`;
+  } else {
+    center.innerHTML = bigChevron();
+  }
 
   const btn = $('#upgradeBtn');
   let reason = '';
   if (s <= 0) reason = 'Выберите ставку';
-  else if (!t) reason = 'Выберите цель';
-  else if (t.price <= s) reason = 'Цель должна быть дороже ставки';
-  else if (stakeBalanceValue() > state.balance) reason = 'Не хватает баланса';
+  else if (!t) reason = 'Выберите предмет';
+  else if (t.price <= s) reason = 'Цель дешевле ставки';
   btn.disabled = !!reason || up.spinning;
-  btn.textContent = up.spinning ? 'Крутим…' : (reason || 'Апгрейд');
+  $('#upgradeLabel').textContent = up.spinning ? 'Крутим…' : (reason || 'Улучшить');
 }
 
 function renderUpInventory() {
@@ -274,8 +382,8 @@ function renderUpInventory() {
     .filter(({ item }) => !q || (item.weapon + ' ' + item.skin).toLowerCase().includes(q))
     .sort((a, b) => b.item.price - a.item.price);
   if (!list.length) {
-    grid.innerHTML = `<div class="empty" style="grid-column:1/-1;padding:30px 10px">
-      ${state.inventory.length ? 'Ничего не найдено' : 'Инвентарь пуст — купите предмет на <a href="#market">рынке</a>, откройте <a href="#cases">кейс</a> или ставьте монеты с баланса.'}</div>`;
+    grid.innerHTML = `<div class="empty">${state.inventory.length ? 'Ничего не найдено'
+      : 'У вас пока нет предметов<div class="muted" style="margin-top:8px">Купите скин на <a href="#market">рынке</a>, откройте <a href="#cases">кейс</a> или поставьте баланс ползунком</div>'}</div>`;
     return;
   }
   grid.innerHTML = list.map(({ e, item }) => cardHTML(item, {
@@ -285,19 +393,17 @@ function renderUpInventory() {
 
 function renderUpTargets() {
   const q = $('#upTargetSearch').value.trim().toLowerCase();
-  const sort = $('#upTargetSort').value;
+  const dir = $('#upTargetSort').dataset.dir;
+  const from = Number($('#upPriceFrom').value) || 0;
+  const to = Number($('#upPriceTo').value) || Infinity;
   const s = stakeTotal();
-  let list = ITEMS.filter(i => !q || (i.weapon + ' ' + i.skin).toLowerCase().includes(q));
+  let list = ITEMS.filter(i => (!q || (i.weapon + ' ' + i.skin).toLowerCase().includes(q)) && i.price >= from && i.price <= to);
   if (s > 0) list = list.filter(i => i.price > s);
-  list.sort((a, b) => sort === 'asc' ? a.price - b.price : b.price - a.price);
-  if (!list.length) {
-    $('#upTargetGrid').innerHTML = `<div class="empty" style="grid-column:1/-1;padding:30px 10px">Нет предметов дороже ставки 🤯</div>`;
-    return;
-  }
-  $('#upTargetGrid').innerHTML = list.map(i => cardHTML(i, {
+  list.sort((a, b) => dir === 'asc' ? a.price - b.price : b.price - a.price);
+  $('#upTargetGrid').innerHTML = list.length ? list.map(i => cardHTML(i, {
     cls: 'clickable' + (i.id === up.targetId ? ' selected' : ''),
     chance: s > 0 ? chanceFor(s, i.price) : null
-  })).join('');
+  })).join('') : `<div class="empty">${s > 0 ? 'Нет предметов дороже ставки' : 'Ничего не найдено'}</div>`;
 }
 
 function toggleStake(uid) {
@@ -313,7 +419,6 @@ function toggleStake(uid) {
 }
 
 function afterStakeChange() {
-  // если цель стала дешевле ставки — сбрасываем
   const t = ITEM_BY_ID[up.targetId];
   if (t && t.price <= stakeTotal()) up.targetId = null;
   resetWheelLook();
@@ -323,9 +428,15 @@ function afterStakeChange() {
 function resetWheelLook() {
   if (up.spinning) return;
   up.snap = null;
+  up.result = null;
   $('#wheel').classList.remove('win', 'lose');
-  $('#wheelResult').textContent = '';
-  $('#wheelResult').className = 'wheel-result';
+}
+
+function setTarget(id) {
+  up.targetId = id;
+  sfx.click();
+  resetWheelLook();
+  renderTargetSlot(); renderWheelInfo(); renderUpTargets();
 }
 
 $('#upInvGrid').addEventListener('click', e => {
@@ -335,34 +446,36 @@ $('#upInvGrid').addEventListener('click', e => {
 $('#upTargetGrid').addEventListener('click', e => {
   const c = e.target.closest('.card');
   if (!c || up.spinning) return;
-  up.targetId = up.targetId === c.dataset.id ? null : c.dataset.id;
-  sfx.click();
-  resetWheelLook();
-  renderTargetSlot(); renderWheelInfo(); renderUpTargets();
+  setTarget(up.targetId === c.dataset.id ? null : c.dataset.id);
 });
 $('#upInvSearch').addEventListener('input', renderUpInventory);
-$('#upTargetSearch').addEventListener('input', renderUpTargets);
-$('#upTargetSort').addEventListener('change', renderUpTargets);
+['#upTargetSearch', '#upPriceFrom', '#upPriceTo'].forEach(s => $(s).addEventListener('input', renderUpTargets));
+$('#upTargetSort').addEventListener('click', e => {
+  const b = e.currentTarget;
+  b.dataset.dir = b.dataset.dir === 'asc' ? 'desc' : 'asc';
+  renderUpTargets();
+});
 $('#stakeBalance').addEventListener('input', () => {
   if (up.spinning) return;
-  if (stakeBalanceValue() > state.balance) $('#stakeBalance').value = state.balance;
   afterStakeChange();
 });
-$('#fastSpin').addEventListener('change', e => { state.settings.fast = e.target.checked; save(); });
 
 $('#multButtons').addEventListener('click', e => {
-  const b = e.target.closest('button[data-mult]');
+  const b = e.target.closest('button');
   if (!b || up.spinning) return;
   const s = stakeTotal();
   if (s <= 0) { toast('Сначала выберите ставку', true); return; }
-  const want = s * Number(b.dataset.mult);
   const candidates = ITEMS.filter(i => i.price > s);
   if (!candidates.length) { toast('Нет предметов дороже ставки', true); return; }
-  const best = candidates.reduce((a, c) => Math.abs(c.price - want) < Math.abs(a.price - want) ? c : a);
-  up.targetId = best.id;
-  sfx.click();
-  resetWheelLook();
-  renderTargetSlot(); renderWheelInfo(); renderUpTargets();
+  let best;
+  if (b.dataset.mult) {
+    const want = s * Number(b.dataset.mult);
+    best = candidates.reduce((a, c) => Math.abs(c.price - want) < Math.abs(a.price - want) ? c : a);
+  } else {
+    const want = Number(b.dataset.chance);
+    best = candidates.reduce((a, c) => Math.abs(chanceFor(s, c.price) - want) < Math.abs(chanceFor(s, a.price) - want) ? c : a);
+  }
+  setTarget(best.id);
 });
 
 $('#upgradeBtn').addEventListener('click', doUpgrade);
@@ -390,18 +503,19 @@ async function doUpgrade() {
   renderHeader();
   save();
   up.snap = { chance, total, price: target.price };
+  up.result = null;
   $('#wheel').classList.remove('win', 'lose');
-  $('#wheelResult').textContent = '';
-  $('#wheelResult').className = 'wheel-result';
   renderWheelInfo();
-  $$('#page-upgrade .picker').forEach(p => p.style.pointerEvents = 'none');
+  $$('#page-upgrade .picker, #multButtons, .bal-slider').forEach(p => p.style.pointerEvents = 'none');
 
-  // Анимация стрелки
+  // Анимация стрелки. Сектор шанса симметричен относительно низа колеса.
+  const sectorDeg = chance / 100 * 360;
+  const display = (res.angle - sectorDeg / 2 + 360) % 360;
   const fast = state.settings.fast;
   const dur = fast ? 1200 : 5200;
   const pointer = $('#pointer');
   const base = up.rotation - (up.rotation % 360);
-  const finalRot = base + 360 * (fast ? 2 : 6) + res.angle;
+  const finalRot = base + 360 * (fast ? 2 : 6) + display;
   pointer.style.transition = `transform ${dur}ms cubic-bezier(.12,.7,.15,1)`;
   pointer.style.transform = `rotate(${finalRot}deg)`;
   up.rotation = finalRot;
@@ -412,6 +526,7 @@ async function doUpgrade() {
   // Итог
   state.stats.upgrades++;
   state.stats.totalStaked += total;
+  counters.upgrades++;
   let consolation = null;
   if (res.win) {
     const entry = addItem(target.id);
@@ -422,37 +537,34 @@ async function doUpgrade() {
     up.stake = [entry.uid];
     $('#stakeBalance').value = 0;
     up.targetId = null;
+    up.result = 'win';
     $('#wheel').classList.add('win');
-    $('#wheelResult').textContent = 'ПОБЕДА!';
-    $('#wheelResult').className = 'wheel-result win';
     chance < 20 ? sfx.bigWin() : sfx.win();
+    addFeed(target, { chance });
   } else {
     state.stats.losses++;
     up.stake = [];
+    up.result = 'lose';
     $('#wheel').classList.add('lose');
-    $('#wheelResult').textContent = 'Не повезло';
-    $('#wheelResult').className = 'wheel-result lose';
     sfx.lose();
     consolation = consolationPrize(total);
     if (consolation) addItem(consolation.id);
-    if (balPart > state.balance) $('#stakeBalance').value = 0;
   }
   pushHistory({
     type: 'upgrade', win: res.win, target: target.id, stake: stakeIds, stakeBal: balPart,
     total, chance, roll: res.roll, nonce, consolation: consolation?.id || null
   });
-  addFeed(target, res.win ? 'x' + multiplierFor(total, target.price).toFixed(1) : null, !res.win);
   save();
 
   up.spinning = false;
-  $$('#page-upgrade .picker').forEach(p => p.style.pointerEvents = '');
+  $$('#page-upgrade .picker, #multButtons, .bal-slider').forEach(p => p.style.pointerEvents = '');
   renderHeader();
   renderUpgrade();
+  renderCounters();
   showUpgradeResult(res, target, total, chance, consolation, nonce);
 }
 
 function tickDuring(dur) {
-  // щелчки, замедляющиеся вместе со стрелкой
   let t = 0, gap = 40;
   while (t < dur - 200) {
     setTimeout(sfx.tick, t);
@@ -464,28 +576,29 @@ function tickDuring(dur) {
 function showUpgradeResult(res, target, total, chance, consolation, nonce) {
   const r = RARITY_BY_ID[target.rarity];
   if (res.win) {
-    openModal(`<h2 style="color:var(--green2)">Апгрейд успешен!</h2>
-      <div class="muted">Шанс был ${chance.toFixed(2)}% · ставка ◆ ${fmt(total)}</div>
-      <div class="m-art">${itemArt(target, { uid: artUid++ })}</div>
-      <div style="font-weight:800;font-size:18px">${target.weapon} | ${target.skin}</div>
-      <div style="color:${r.color};font-size:13px">${r.name}</div>
-      <div style="font-size:26px;font-weight:900;color:var(--gold);margin-top:8px">◆ ${fmt(target.price)}</div>
+    openModal(`<h2 style="color:var(--green)">Апгрейд успешен!</h2>
+      <div class="muted">Шанс ${chance.toFixed(2)}% · ставка ${fmt(total)}</div>
+      <div class="m-art" style="${rarityStyle(target)}">${itemArt(target, { uid: artUid++ })}</div>
+      <div style="font-weight:800;font-size:18px;text-transform:uppercase">${target.skin}</div>
+      <div class="muted">${target.weapon} · <span style="color:${r.color}">${r.name}</span></div>
+      <div class="m-big">${fmt(target.price)} <span class="coin coin-lg"></span></div>
       <div class="m-actions">
-        <button class="btn btn-primary" data-close>Апгрейдить дальше</button>
-        <button class="btn btn-ghost" id="mSell">Продать</button>
+        <button class="btn btn-yellow" data-close>Улучшить дальше</button>
+        <button class="btn btn-dark" id="mSell">Продать</button>
       </div>
-      <div class="muted" style="margin-top:12px">Ролл: ${res.roll} / 10000 · nonce ${nonce}</div>`, 'win');
+      <div class="muted small" style="margin-top:12px">Ролл ${res.roll} / 10000 · nonce ${nonce}</div>`, 'win');
     $('#mSell').addEventListener('click', () => {
       const uid = up.stake[0];
       if (uid && invItem(uid)) sellItems([uid]);
       closeModal();
     });
   } else {
-    openModal(`<h2 style="color:#fca5a5">Не повезло…</h2>
-      <div class="muted">Шанс был ${chance.toFixed(2)}% · ролл ${res.roll} (нужно меньше ${Math.round(chance * 100)})</div>
+    openModal(`<h2 style="color:var(--red)">Не повезло…</h2>
+      <div class="muted">Шанс ${chance.toFixed(2)}% · ролл ${res.roll} (нужно меньше ${Math.round(chance * 100)})</div>
       <div class="m-art" style="opacity:.35;filter:grayscale(1)">${itemArt(target, { uid: artUid++ })}</div>
-      ${consolation ? `<div style="margin-top:6px">Утешительный приз: <b>${consolation.weapon} | ${consolation.skin}</b> <span style="color:var(--gold)">◆ ${fmt(consolation.price)}</span></div>` : ''}
-      <div class="m-actions"><button class="btn btn-primary" data-close>Ещё раз</button></div>`, 'lose');
+      ${consolation ? `<div>Утешительный приз: <b>${consolation.weapon} | ${consolation.skin}</b>
+        <span style="color:var(--yellow)">${fmt(consolation.price)}</span></div>` : ''}
+      <div class="m-actions"><button class="btn btn-yellow" data-close>Ещё раз</button></div>`, 'lose');
   }
 }
 
@@ -505,12 +618,13 @@ function renderCases() {
   if (cs.caseId) { renderCaseOpen(); return; }
   $('#caseOpen').classList.add('hidden');
   $('#caseList').classList.remove('hidden');
+  $('#page-cases .page-title').classList.remove('hidden');
   $('#caseList').innerHTML = CASES.map(c => `
     <div class="case-card" data-case="${c.id}" style="--cc:${c.color}">
       ${caseBoxHTML(c)}
       <h3>${c.name}</h3>
       <p>${c.desc}</p>
-      <span class="case-price">◆ ${fmt(c.price)}</span>
+      <span class="case-price"><span class="coin"></span>${fmt(c.price)}</span>
     </div>`).join('');
 }
 
@@ -520,6 +634,7 @@ $('#caseList').addEventListener('click', e => {
   cs.caseId = c.dataset.case;
   sfx.click();
   renderCases();
+  window.scrollTo({ top: 0 });
 });
 $('#caseBack').addEventListener('click', () => {
   if (cs.spinning) return;
@@ -540,15 +655,16 @@ function updateCaseButton() {
   const c = CASE_BY_ID[cs.caseId];
   const cost = c.price * cs.qty;
   const btn = $('#caseOpenBtn');
-  btn.textContent = cs.spinning ? 'Открываем…' : `Открыть за ◆ ${fmt(cost)}`;
+  btn.innerHTML = cs.spinning ? 'Открываем…' : `Открыть за <span class="coin" style="width:18px;height:18px"></span> ${fmt(cost)}`;
   btn.disabled = cs.spinning || state.balance < cost;
 }
 
 function renderCaseOpen() {
   const c = CASE_BY_ID[cs.caseId];
   $('#caseList').classList.add('hidden');
+  $('#page-cases .page-title').classList.add('hidden');
   $('#caseOpen').classList.remove('hidden');
-  $('#caseTitle').innerHTML = `${c.name} <span class="case-price" style="font-size:15px;margin-left:8px">◆ ${fmt(c.price)}</span>`;
+  $('#caseTitle').innerHTML = `${c.name} <span class="case-price"><span class="coin"></span>${fmt(c.price)}</span>`;
   const total = c.pool.reduce((s, [, w]) => s + w, 0);
   $('#caseContents').innerHTML = c.pool
     .map(([id, w]) => ({ item: ITEM_BY_ID[id], p: w / total * 100 }))
@@ -559,7 +675,7 @@ function renderCaseOpen() {
   if (!cs.spinning) buildIdleRoulettes();
 }
 
-function randomPoolItem(c) { return pickFromPool(c.pool); }
+const randomPoolItem = c => pickFromPool(c.pool);
 
 function buildIdleRoulettes() {
   const c = CASE_BY_ID[cs.caseId];
@@ -583,8 +699,8 @@ function fitRouletteCards() {
     r.querySelectorAll('.card').forEach(card => {
       card.style.height = h + 'px';
       card.style.flexBasis = Math.round(h * 1.03) + 'px';
-      const art = card.querySelector('svg, img');
-      if (art) art.style.height = Math.max(34, h - 80) + 'px';
+      const art = card.querySelector('svg:not(.coin), img');
+      if (art) art.style.height = Math.max(30, h - 76) + 'px';
     });
   });
 }
@@ -603,7 +719,6 @@ async function openCases() {
   updateCaseButton();
   $('#caseDrops').classList.add('hidden');
 
-  // Результаты — через provably fair
   const drops = [];
   for (let i = 0; i < qty; i++) {
     const nonce = state.fair.nonce++;
@@ -613,7 +728,6 @@ async function openCases() {
   }
   save();
 
-  // Строим ленты
   const WIN_INDEX = 48, LEN = 56;
   const wrap = $('#roulettes');
   wrap.innerHTML = '';
@@ -649,16 +763,16 @@ async function openCases() {
   await sleep(dur + 200);
   tracks.forEach(div => div.querySelector('.is-win').classList.add('winner'));
 
-  // В инвентарь
   const entries = drops.map(d => addItem(d.item.id));
   state.stats.casesOpened += qty;
   state.stats.totalStaked += cost;
+  counters.cases += qty;
   const got = drops.reduce((s, d) => s + d.item.price, 0);
   state.stats.totalWon += got;
   for (const d of drops) {
     if (!state.stats.biggestDrop || d.item.price > state.stats.biggestDrop.price)
       state.stats.biggestDrop = { id: d.item.id, price: d.item.price };
-    addFeed(d.item, 'КЕЙС');
+    addFeed(d.item, { isCase: true });
   }
   pushHistory({ type: 'case', caseId: c.id, items: drops.map(d => d.item.id), cost, got });
   save();
@@ -666,6 +780,7 @@ async function openCases() {
   cs.lastDrops = entries.map(e => e.uid);
   got >= cost * 1.5 ? sfx.bigWin() : got >= cost ? sfx.win() : sfx.coin();
   renderHeader();
+  renderCounters();
   updateCaseButton();
   showCaseDrops(drops.map((d, i) => ({ item: d.item, uid: entries[i].uid })), cost);
 }
@@ -675,11 +790,11 @@ function showCaseDrops(list, cost) {
   const total = list.reduce((s, x) => s + x.item.price, 0);
   box.innerHTML = `<div class="grid">${list.map(x => cardHTML(x.item, { uid: x.uid })).join('')}</div>
     <div class="drops-actions">
-      <span style="align-self:center;color:${total >= cost ? 'var(--green2)' : 'var(--muted)'}">
-        Выпало на ◆ ${fmt(total)} (${total >= cost ? '+' : ''}${fmt(total - cost)})</span>
-      <button class="btn btn-ghost" id="dropsSell">Продать за ◆ ${fmt(total)}</button>
-      <button class="btn btn-primary" id="dropsUpgrade">В апгрейд</button>
-      <button class="btn btn-ghost" id="dropsKeep">Оставить</button>
+      <span style="color:${total >= cost ? 'var(--green)' : 'var(--muted)'}">
+        Выпало на ${fmt(total)} (${total >= cost ? '+' : ''}${fmt(total - cost)})</span>
+      <button class="btn btn-dark" id="dropsSell">Продать за ${fmt(total)}</button>
+      <button class="btn btn-yellow" id="dropsUpgrade">В апгрейд</button>
+      <button class="btn btn-outline" id="dropsKeep">Оставить</button>
     </div>`;
   box.classList.remove('hidden');
   $('#dropsSell').addEventListener('click', () => {
@@ -692,6 +807,7 @@ function showCaseDrops(list, cost) {
     up.targetId = null;
     $('#stakeBalance').value = 0;
     box.classList.add('hidden');
+    resetWheelLook();
     location.hash = '#upgrade';
   });
 }
@@ -718,7 +834,7 @@ function renderMarket() {
     sort === 'asc' ? a.price - b.price : sort === 'desc' ? b.price - a.price :
       (a.weapon + a.skin).localeCompare(b.weapon + b.skin, 'ru'));
   $('#mkGrid').innerHTML = list.length ? list.map(i => cardHTML(i, {
-    actions: `<button class="btn btn-primary" data-buy="${i.id}" ${i.price > state.balance ? 'disabled' : ''}>Купить</button>`
+    actions: `<button class="btn btn-yellow" data-buy="${i.id}" ${i.price > state.balance ? 'disabled' : ''}>Купить</button>`
   })).join('') : '<div class="empty" style="grid-column:1/-1">Ничего не найдено</div>';
 }
 
@@ -753,7 +869,7 @@ function sellItems(uids) {
   pushHistory({ type: 'sell', count: uids.length, amount: total });
   save();
   sfx.coin();
-  toast(`Продано ${uids.length} шт. за ◆ ${fmt(total)}`);
+  toast(`Продано ${uids.length} шт. за ${fmt(total)}`);
   renderHeader();
   if (currentPage !== 'cases') renderPage();
 }
@@ -775,14 +891,14 @@ function renderInventory() {
   $('#invSelectMode').textContent = inv.selectMode ? 'Отмена' : 'Выбрать';
   $('#invSellSelected').classList.toggle('hidden', !inv.selectMode);
   const selVal = [...inv.selected].reduce((s, uid) => s + ITEM_BY_ID[invItem(uid).id].price, 0);
-  $('#invSellSelected').textContent = `Продать выбранное (${inv.selected.size}) · ◆ ${fmt(selVal)}`;
+  $('#invSellSelected').textContent = `Продать выбранное (${inv.selected.size}) · ${fmt(selVal)}`;
   $('#invSellSelected').disabled = !inv.selected.size;
 
   $('#invGrid').innerHTML = list.map(({ e, item }) => cardHTML(item, {
     uid: e.uid, check: true,
     cls: (inv.selectMode ? 'clickable' : '') + (inv.selected.has(e.uid) ? ' selected' : ''),
-    actions: inv.selectMode ? '' : `<button class="btn btn-primary" data-up="${e.uid}">Апгрейд</button>
-      <button class="btn btn-ghost" data-sell="${e.uid}">Продать</button>`
+    actions: inv.selectMode ? '' : `<button class="btn btn-yellow" data-up="${e.uid}">Апгрейд</button>
+      <button class="btn btn-dark" data-sell="${e.uid}">Продать</button>`
   })).join('');
 }
 
@@ -794,6 +910,7 @@ $('#invGrid').addEventListener('click', e => {
     up.stake = [Number(upg.dataset.up)];
     up.targetId = null;
     $('#stakeBalance').value = 0;
+    resetWheelLook();
     location.hash = '#upgrade';
     return;
   }
@@ -821,11 +938,11 @@ $('#invSellSelected').addEventListener('click', () => {
 });
 $('#invSellAll').addEventListener('click', () => {
   const total = inventoryValue();
-  openModal(`<h2>Продать всё?</h2>
+  openModal(`<h2>Продать все?</h2>
     <p class="muted">${state.inventory.length} предметов на сумму</p>
-    <div style="font-size:30px;font-weight:900;color:var(--gold)">◆ ${fmt(total)}</div>
-    <div class="m-actions"><button class="btn btn-danger" id="mConfirmSell">Продать</button>
-    <button class="btn btn-ghost" data-close>Отмена</button></div>`);
+    <div class="m-big">${fmt(total)} <span class="coin coin-lg"></span></div>
+    <div class="m-actions"><button class="btn btn-yellow" id="mConfirmSell">Продать</button>
+    <button class="btn btn-dark" data-close>Отмена</button></div>`);
   $('#mConfirmSell').addEventListener('click', () => {
     sellItems(state.inventory.map(e => e.uid));
     closeModal();
@@ -843,43 +960,72 @@ function timeAgo(t) {
   return new Date(t).toLocaleDateString('ru-RU');
 }
 const iname = id => { const i = ITEM_BY_ID[id]; return i ? `${i.weapon} | ${i.skin}` : '?'; };
+let pfTab = 'history';
 
 function renderProfile() {
   const st = state.stats;
+  $('#pfAvatar').innerHTML = avatarSVG(state.playerId);
+  $('#pfName').textContent = state.nickname || 'Игрок';
+  $('#pfId').textContent = 'ID ' + state.playerId;
+  $('#pfBalance').textContent = fmt(state.balance);
+  $('#pfInvCount').textContent = state.inventory.length;
+  $('#pfInvValue').textContent = fmt(inventoryValue());
+  $('#pfUpgrades').textContent = fmt(st.upgrades);
+  $('#pfCases').textContent = fmt(st.casesOpened);
+  const streak = Date.now() - state.daily.last < 2 * DAY ? state.daily.streak : 0;
+  $('#pfDailyInfo').textContent = `Серия: ${streak} дн. · ${dailyReady() ? 'можно забрать!' : 'следующий через ' + dailyLeftText()}`;
+  renderDaily();
+
+  // Лучший дроп
+  const best = st.bestWin && (!st.biggestDrop || st.bestWin.price >= st.biggestDrop.price) ? st.bestWin : st.biggestDrop;
+  const bestItem = best && ITEM_BY_ID[best.id];
+  $('#pfBest').innerHTML = bestItem ? `
+      <div class="pf-best-title">Лучший дроп</div>
+      ${best.chance ? `<span class="pf-best-chance">${ICON.chev} ${best.chance.toFixed(2)}%</span>` : '<span class="pf-best-chance">Кейс</span>'}
+      ${itemArt(bestItem, { uid: artUid++ })}
+      <div class="pf-best-name"><small>${bestItem.weapon}</small><b>${bestItem.skin}</b></div>
+      <div class="pf-best-price">${fmt(bestItem.price)} <span class="coin"></span></div>`
+    : `<div class="pf-best-title">Лучший дроп</div><div class="muted" style="margin-top:34px;position:relative">Сделайте первый апгрейд<br>или откройте кейс</div>`;
+
+  // Табы
+  $$('#pfTabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === pfTab));
+  ['history', 'stats', 'fair'].forEach(t => $('#tab-' + t).classList.toggle('hidden', t !== pfTab));
+
+  // Статистика
   const winrate = st.upgrades ? (st.wins / st.upgrades * 100).toFixed(1) + '%' : '—';
-  const worth = state.balance + inventoryValue();
   const stats = [
-    ['Общее состояние', '◆ ' + fmtShort(worth)],
-    ['Баланс', '◆ ' + fmtShort(state.balance)],
-    ['Апгрейдов', st.upgrades],
-    ['Процент побед', winrate],
-    ['Побед / поражений', `${st.wins} / ${st.losses}`],
-    ['Открыто кейсов', st.casesOpened],
-    ['Лучший апгрейд', st.bestWin ? `◆ ${fmtShort(st.bestWin.price)} <small class="muted">(${st.bestWin.chance.toFixed(1)}%)</small>` : '—'],
-    ['Лучший дроп', st.biggestDrop ? '◆ ' + fmtShort(st.biggestDrop.price) : '—']
+    ['Общее состояние', fmtShort(state.balance + inventoryValue())],
+    ['Апгрейдов', st.upgrades], ['Процент побед', winrate],
+    ['Побед / поражений', `${st.wins} / ${st.losses}`], ['Открыто кейсов', st.casesOpened],
+    ['Куплено / продано', `${st.itemsBought} / ${st.itemsSold}`],
+    ['Лучший апгрейд', st.bestWin ? `${fmtShort(st.bestWin.price)} <small class="muted">(${st.bestWin.chance.toFixed(1)}%)</small>` : '—'],
+    ['Лучший дроп из кейса', st.biggestDrop ? fmtShort(st.biggestDrop.price) : '—']
   ];
   $('#stats').innerHTML = stats.map(([l, v]) => `<div class="stat"><div class="s-label">${l}</div><div class="s-value">${v}</div></div>`).join('');
 
+  // История
   $('#history').innerHTML = state.history.length ? state.history.map(h => {
     let cls = '', text = '';
     switch (h.type) {
       case 'upgrade':
         cls = h.win ? 'win' : 'lose';
-        text = `${h.win ? '✅' : '❌'} Апгрейд ◆ ${fmt(h.total)} → <b>${iname(h.target)}</b> (${h.chance.toFixed(1)}%, ролл ${h.roll}, nonce ${h.nonce})${h.consolation ? ' · утешение: ' + iname(h.consolation) : ''}`;
+        text = `${h.win ? '✅' : '❌'} Апгрейд ${fmt(h.total)} → <b>${iname(h.target)}</b> (${h.chance.toFixed(1)}%, ролл ${h.roll}, nonce ${h.nonce})${h.consolation ? ' · утешение: ' + iname(h.consolation) : ''}`;
         break;
       case 'case':
         cls = h.got >= h.cost ? 'win' : 'lose';
-        text = `📦 ${CASE_BY_ID[h.caseId]?.name || 'Кейс'}: ${h.items.map(iname).join(', ')} (◆ ${fmt(h.got)} из ◆ ${fmt(h.cost)})`;
+        text = `📦 ${CASE_BY_ID[h.caseId]?.name || 'Кейс'}: ${h.items.map(iname).join(', ')} (${fmt(h.got)} из ${fmt(h.cost)})`;
         break;
-      case 'buy': text = `🛒 Куплено ${iname(h.item)} за ◆ ${fmt(h.price)}`; break;
-      case 'sell': text = `💰 Продано ${h.count} шт. за ◆ ${fmt(h.amount)}`; break;
-      case 'daily': cls = 'win'; text = `🎁 Ежедневный бонус ◆ ${fmt(h.amount)}`; break;
-      case 'credit': text = `🆘 Пособие ◆ ${fmt(h.amount)}`; break;
+      case 'buy': text = `🛒 Куплено ${iname(h.item)} за ${fmt(h.price)}`; break;
+      case 'sell': text = `💰 Продано ${h.count} шт. за ${fmt(h.amount)}`; break;
+      case 'daily': cls = 'win'; text = `🎁 Ежедневный бонус ${fmt(h.amount)}`; break;
+      case 'credit': text = `🆘 Пособие ${fmt(h.amount)}`; break;
+      case 'promo': cls = 'win'; text = `🎟️ Купон ${esc(h.code)}: +${fmt(h.amount)}`; break;
       default: text = h.type;
     }
     return `<div class="h-row ${cls}"><span>${text}</span><span class="h-time">${timeAgo(h.t)}</span></div>`;
-  }).join('') : '<div class="muted">Пока пусто — сделайте первый апгрейд!</div>';
+  }).join('') : '<div class="empty">Пока пусто — сделайте первый апгрейд!</div>';
 
+  // Честная игра
   const f = state.fair;
   $('#fairHash').textContent = f.serverHash;
   $('#fairNonce').textContent = f.nonce;
@@ -888,7 +1034,7 @@ function renderProfile() {
       <div>Серверный сид: <code>${esc(r.serverSeed)}</code></div>
       <div>Хеш: <code>${esc(r.serverHash)}</code></div>
       <div>Клиентский сид: <code>${esc(r.clientSeed)}</code> · ставок: ${r.nonces}</div>
-      <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" data-fill='${esc(JSON.stringify({ s: r.serverSeed, c: r.clientSeed }))}'>Подставить в проверку</button>
+      <button class="btn btn-dark" style="height:30px;font-size:12px;margin-top:6px" data-fill='${esc(JSON.stringify({ s: r.serverSeed, c: r.clientSeed }))}'>Подставить в проверку</button>
     </div>`).join('');
 
   const canCredit = creditAvailable();
@@ -896,12 +1042,58 @@ function renderProfile() {
   $('#creditInfo').textContent = canCredit.msg;
 }
 
+$('#pfTabs').addEventListener('click', e => {
+  const b = e.target.closest('button[data-tab]');
+  if (!b) return;
+  pfTab = b.dataset.tab;
+  renderProfile();
+});
+$('#pfHistoryLink').addEventListener('click', e => {
+  e.preventDefault();
+  pfTab = 'history';
+  renderProfile();
+  $('.pf-tabs-wrap').scrollIntoView({ behavior: 'smooth' });
+});
+$('#pfDailyBtn').addEventListener('click', claimDaily);
+
+$('#promoBtn').addEventListener('click', applyPromo);
+$('#promoInput').addEventListener('keydown', e => { if (e.key === 'Enter') applyPromo(); });
+function applyPromo() {
+  const code = $('#promoInput').value.trim().toUpperCase();
+  if (!code) return;
+  const amount = CONFIG.promoCodes[code];
+  if (!amount) { toast('Такого купона нет', true); return; }
+  if (state.usedPromos.includes(code)) { toast('Этот купон уже использован', true); return; }
+  state.usedPromos.push(code);
+  changeBalance(amount);
+  pushHistory({ type: 'promo', code, amount });
+  save(); sfx.coin();
+  $('#promoInput').value = '';
+  openModal(`<h2>Купон активирован!</h2><div class="m-big">+ ${fmt(amount)} <span class="coin coin-lg"></span></div>
+    <div class="m-actions"><button class="btn btn-yellow" data-close>Супер</button></div>`, 'gold');
+  renderProfile();
+}
+
+$('#pfEditName').addEventListener('click', () => {
+  openModal(`<h2>Сменить ник</h2>
+    <input type="text" id="mNick" maxlength="20" value="${esc(state.nickname || '')}" style="width:100%;margin:14px 0">
+    <div class="m-actions"><button class="btn btn-yellow" id="mNickSave">Сохранить</button><button class="btn btn-dark" data-close>Отмена</button></div>`);
+  const input = $('#mNick');
+  input.focus(); input.select();
+  const saveNick = () => {
+    state.nickname = input.value.trim().slice(0, 20) || 'Игрок';
+    save(); closeModal(); renderProfile();
+  };
+  $('#mNickSave').addEventListener('click', saveNick);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') saveNick(); });
+});
+
 function creditAvailable() {
   const worth = state.balance + inventoryValue();
-  if (worth >= CONFIG.demoCreditMinBalance) return { ok: false, msg: `Доступно, когда общее состояние меньше ◆ ${fmt(CONFIG.demoCreditMinBalance)}.` };
+  if (worth >= CONFIG.demoCreditMinBalance) return { ok: false, msg: `Пособие доступно, когда баланс + инвентарь меньше ${fmt(CONFIG.demoCreditMinBalance)}.` };
   const left = CONFIG.demoCreditCooldownMs - (Date.now() - state.lastCredit);
   if (left > 0) return { ok: false, msg: `Следующее пособие через ${Math.ceil(left / 60000)} мин.` };
-  return { ok: true, msg: `Вы получите ◆ ${fmt(CONFIG.demoCredit)}.` };
+  return { ok: true, msg: `Вы получите ${fmt(CONFIG.demoCredit)} монет.` };
 }
 
 $('#creditBtn').addEventListener('click', () => {
@@ -910,17 +1102,18 @@ $('#creditBtn').addEventListener('click', () => {
   changeBalance(CONFIG.demoCredit);
   pushHistory({ type: 'credit', amount: CONFIG.demoCredit });
   save(); sfx.coin();
-  toast(`Начислено ◆ ${fmt(CONFIG.demoCredit)}`);
+  toast(`Начислено ${fmt(CONFIG.demoCredit)}`);
   renderProfile();
 });
 
-$('#resetBtn').addEventListener('click', () => {
+$('#pfReset').addEventListener('click', () => {
   openModal(`<h2>Сбросить прогресс?</h2><p class="muted">Баланс, инвентарь, история и статистика будут удалены.</p>
-    <div class="m-actions"><button class="btn btn-danger" id="mReset">Сбросить</button><button class="btn btn-ghost" data-close>Отмена</button></div>`);
+    <div class="m-actions"><button class="btn btn-yellow" id="mReset">Сбросить</button><button class="btn btn-dark" data-close>Отмена</button></div>`);
   $('#mReset').addEventListener('click', async () => {
     resetAll();
     await ensureSeeds();
     up.stake = []; up.targetId = null; cs.caseId = null;
+    resetWheelLook();
     closeModal();
     renderHeader();
     renderPage();
@@ -954,41 +1147,47 @@ $('#vBtn').addEventListener('click', async () => {
   const serverHash = await sha256Hex(s);
   const roll = hashToInt(hash);
   let html = `Хеш сида: <code>${serverHash}</code><br>Хеш ставки: <code>${hash}</code><br>Ролл: <b>${roll}</b> / 10000`;
-  if (ch > 0) html += ` → ${roll < Math.round(ch * 100) ? '<b style="color:var(--green2)">ПОБЕДА</b>' : '<b style="color:var(--red)">ПРОИГРЫШ</b>'} при шансе ${ch}%`;
+  if (ch > 0) html += ` → ${roll < Math.round(ch * 100) ? '<b style="color:var(--green)">ПОБЕДА</b>' : '<b style="color:var(--red)">ПРОИГРЫШ</b>'} при шансе ${ch}%`;
   html += `<br>Для кейса: случайное число ${(hashToInt(hash, 1e8) / 1e8).toFixed(8)}`;
   $('#vResult').innerHTML = html;
 });
 
 // ══════════════════════════════════════════════════════════════════════════
-// ЛЕНТА «ЖИВЫХ» ДРОПОВ (боты для атмосферы)
+// ЛЕНТА СЛЕВА («живые» апгрейды ботов + ваши)
 // ══════════════════════════════════════════════════════════════════════════
-function addFeed(item, tag, lost = false) {
-  if (lost) return;
+const recent = [];
+function liveCardHTML({ item, chance, isCase }, top = false) {
+  return `<div class="live-card${top ? ' top' : ''}" style="${rarityStyle(item)}" title="${item.weapon} | ${item.skin} — ${fmt(item.price)}">
+    <span class="lc-chance${isCase ? ' case' : ''}">${isCase ? 'КЕЙС' : ICON.chev + ' ' + chance.toFixed(2) + '%'}</span>
+    ${itemArt(item, { uid: artUid++, bg: false })}
+    <div class="lc-name">${item.skin}</div>
+    <div class="lc-weapon">${item.weapon}</div>
+  </div>`;
+}
+
+function addFeed(item, { chance = 50, isCase = false } = {}) {
+  const entry = { item, chance, isCase, t: Date.now() };
+  recent.unshift(entry);
+  if (recent.length > 30) recent.pop();
   const feed = $('#feed');
-  const d = document.createElement('div');
-  d.className = 'feed-item';
-  d.style.cssText = rarityStyle(item);
-  d.title = `${item.weapon} | ${item.skin} — ◆ ${fmt(item.price)}`;
-  d.innerHTML = `${itemArt(item, { uid: artUid++, bg: false })}
-    <span class="fi-tag ${tag === 'КЕЙС' ? 'case' : ''}">${tag}</span>
-    <span class="fi-name">${item.weapon} | ${item.skin}</span>`;
-  feed.prepend(d);
-  while (feed.children.length > 30) feed.lastChild.remove();
+  feed.insertAdjacentHTML('afterbegin', liveCardHTML(entry));
+  while (feed.children.length > 16) feed.lastElementChild.remove();
+  const top = recent.reduce((a, b) => (b.item.price > a.item.price ? b : a));
+  $('#liveTop').innerHTML = liveCardHTML(top, true);
 }
 
 function botFeedOnce() {
-  // дешёвые предметы встречаются чаще
-  const weights = ITEMS.map(i => 1 / Math.sqrt(i.price));
+  const weights = ITEMS.map(i => 1 / Math.pow(i.price, 0.45));
   const total = weights.reduce((a, b) => a + b, 0);
   let r = Math.random() * total, item = ITEMS[0];
   for (let i = 0; i < ITEMS.length; i++) { r -= weights[i]; if (r <= 0) { item = ITEMS[i]; break; } }
-  const isCase = Math.random() < 0.35;
-  const tag = isCase ? 'КЕЙС' : 'x' + (1.2 + Math.random() * Math.random() * 12).toFixed(1);
-  addFeed(item, tag);
+  const isCase = Math.random() < 0.3;
+  addFeed(item, { isCase, chance: rand(18, 88) });
+  if (isCase) counters.cases++;
 }
 function botTick() {
   botFeedOnce();
-  setTimeout(botTick, 1500 + Math.random() * 3500);
+  setTimeout(botTick, 1800 + Math.random() * 3500);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -999,28 +1198,28 @@ async function init() {
   load();
   await ensureSeeds();
   setSoundEnabled(state.settings.sound);
-  $('#fastSpin').checked = !!state.settings.fast;
   shownBalance = state.balance;
+  counters.upgrades += state.stats.upgrades;
   buildTicks();
   initMarketFilters();
   renderHeader();
+  renderCounters();
   route();
-  for (let i = 0; i < 12; i++) botFeedOnce();
+  for (let i = 0; i < 14; i++) botFeedOnce();
   setTimeout(botTick, 2000);
   window.addEventListener('resize', () => { if (currentPage === 'cases' && !cs.spinning && cs.caseId) fitRouletteCards(); });
 
-  // первый запуск — приветствие
   if (!state.history.length && !state.inventory.length && state.stats.upgrades === 0) {
     openModal(`<h2>Добро пожаловать в UPGRADER SIM!</h2>
-      <p class="muted" style="text-align:left">
-        🎯 <b>Апгрейд</b> — поставьте предмет или монеты, выберите цель дороже и крутите колесо.
-        Чем дороже цель, тем меньше шанс.<br><br>
-        📦 <b>Кейсы</b> — открывайте ящики и выбивайте скины.<br><br>
-        🛒 <b>Рынок</b> — покупайте предметы для апгрейда.<br><br>
-        🎁 Каждый день забирайте бонус. Все монеты виртуальные.
-      </p>
-      <div style="font-size:24px;font-weight:900;color:var(--gold);margin:10px 0">Стартовый баланс: ◆ ${fmt(state.balance)}</div>
-      <div class="m-actions"><button class="btn btn-primary" data-close>Начать</button></div>`, 'win');
+      <div class="m-text">
+        <p>🎯 <b>Upgrade</b> — поставьте скины или баланс, выберите предмет дороже и жмите «Улучшить».</p>
+        <p>📦 <b>Кейсы</b> — открывайте ящики и выбивайте скины.</p>
+        <p>🛒 <b>Рынок</b> — покупайте скины для апгрейда.</p>
+        <p>🎁 Каждый день забирайте бонус. Купон <b>GITHUB</b> в профиле даст ещё 10 000.</p>
+      </div>
+      <div class="m-big">${fmt(state.balance)} <span class="coin coin-lg"></span></div>
+      <div class="muted">стартовый баланс · все монеты виртуальные</div>
+      <div class="m-actions"><button class="btn btn-yellow btn-tall" data-close style="min-width:200px">Начать</button></div>`, 'gold');
   }
 }
 

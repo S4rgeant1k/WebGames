@@ -160,9 +160,9 @@ export function itemSvg(item, { uid = 0, bg = true } = {}) {
 }
 
 /** Маленькая иконка категории (для пустых слотов). */
-export function categoryIcon(cat) {
+export function categoryIcon(cat, fill = 'rgba(255,255,255,0.10)') {
   const paths = SHAPES[cat] || SHAPES.rifle;
-  return `<svg viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg">
-    <g fill="rgba(255,255,255,0.10)">${paths.map(d => `<path d="${d}"/>`).join('')}</g>
+  return `<svg viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <g fill="${fill}">${paths.map(d => `<path d="${d}"/>`).join('')}</g>
   </svg>`;
 }
