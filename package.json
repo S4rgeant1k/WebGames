@@ -1,0 +1,11 @@
+{
+  "name": "webgames-upgrader-sim",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Браузерный симулятор апгрейда скинов (виртуальная валюта)",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test tests/logic.test.mjs"
+  }
+}

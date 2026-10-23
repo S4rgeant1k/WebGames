@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>UPGRADER SIM — симулятор апгрейда скинов</title>
+  <meta name="description" content="Браузерный симулятор апгрейда скинов: рулетка шанса, кейсы, рынок. Только виртуальные монеты.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%2310b981'/><path d='M32 12 50 34H39v18H25V34H14z' fill='%23fff'/></svg>">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Лента «живых» дропов -->
+  <div class="feed" id="feed" aria-label="Последние апгрейды"></div>
+
+  <header class="topbar">
+    <a class="logo" href="#upgrade" aria-label="На главную">
+      <span class="logo-mark">▲</span>
+      <span class="logo-text">UPGRADER<span class="logo-sim">SIM</span></span>
+    </a>
+
+    <nav class="nav" id="nav">
+      <a href="#upgrade"   data-page="upgrade">Апгрейд</a>
+      <a href="#cases"     data-page="cases">Кейсы</a>
+      <a href="#market"    data-page="market">Рынок</a>
+      <a href="#inventory" data-page="inventory">Инвентарь <span class="badge" id="invCount">0</span></a>
+      <a href="#profile"   data-page="profile">Профиль</a>
+    </nav>
+
+    <div class="top-right">
+      <button class="btn btn-ghost btn-daily" id="dailyBtn" title="Ежедневный бонус">🎁 <span id="dailyLabel">Бонус</span></button>
+      <div class="balance" title="Баланс (виртуальные монеты)">
+        <span class="coin">◆</span>
+        <span id="balance">0</span>
+      </div>
+      <button class="btn btn-icon" id="soundBtn" title="Звук">🔊</button>
+    </div>
+  </header>
+
+  <main id="app">
+    <!-- ═══════════════ АПГРЕЙД ═══════════════ -->
+    <section class="page" id="page-upgrade">
+      <div class="upgrade-stage">
+        <!-- Ставка -->
+        <div class="slot-card" id="stakeCard">
+          <div class="slot-title">Ваша ставка</div>
+          <div class="slot-body" id="stakeBody"></div>
+          <div class="slot-foot">
+            <div class="sum-row"><span>Предметы</span><b id="stakeItemsValue">0</b></div>
+            <label class="sum-row add-balance">
+              <span>+ с баланса</span>
+              <input type="number" id="stakeBalance" min="0" step="100" value="0" inputmode="numeric">
+            </label>
+            <div class="sum-row total"><span>Итого</span><b id="stakeTotal">0</b></div>
+          </div>
+        </div>
+
+        <!-- Колесо -->
+        <div class="wheel-wrap">
+          <div class="wheel" id="wheel">
+            <svg viewBox="0 0 200 200" class="wheel-svg">
+              <defs>
+                <linearGradient id="winGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#34d399"/>
+                  <stop offset="100%" stop-color="#059669"/>
+                </linearGradient>
+              </defs>
+              <circle cx="100" cy="100" r="86" class="wheel-track"/>
+              <path id="wheelSector" class="wheel-sector" d=""/>
+              <g id="wheelTicks"></g>
+              <circle cx="100" cy="100" r="66" class="wheel-inner"/>
+            </svg>
+            <div class="pointer" id="pointer"><div class="pointer-arrow"></div></div>
+            <div class="wheel-center">
+              <div class="chance" id="chanceValue">0%</div>
+              <div class="chance-label">шанс</div>
+              <div class="mult" id="multValue">x0.00</div>
+            </div>
+          </div>
+          <div class="wheel-result" id="wheelResult"></div>
+          <button class="btn btn-primary btn-big" id="upgradeBtn" disabled>Апгрейд</button>
+          <label class="fast-toggle"><input type="checkbox" id="fastSpin"> Быстрая прокрутка</label>
+        </div>
+
+        <!-- Цель -->
+        <div class="slot-card" id="targetCard">
+          <div class="slot-title">Цель</div>
+          <div class="slot-body" id="targetBody"></div>
+          <div class="slot-foot">
+            <div class="mult-row" id="multButtons">
+              <button data-mult="1.5">x1.5</button>
+              <button data-mult="2">x2</button>
+              <button data-mult="3">x3</button>
+              <button data-mult="5">x5</button>
+              <button data-mult="10">x10</button>
+            </div>
+            <div class="sum-row total"><span>Стоимость</span><b id="targetValue">0</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pickers">
+        <div class="picker">
+          <div class="picker-head">
+            <h3>Мой инвентарь <small>выберите до 6 предметов</small></h3>
+            <input type="search" placeholder="Поиск…" id="upInvSearch">
+          </div>
+          <div class="grid grid-sm" id="upInvGrid"></div>
+        </div>
+        <div class="picker">
+          <div class="picker-head">
+            <h3>Выбрать цель</h3>
+            <div class="picker-tools">
+              <input type="search" placeholder="Поиск…" id="upTargetSearch">
+              <select id="upTargetSort">
+                <option value="asc">Дешевле</option>
+                <option value="desc">Дороже</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid grid-sm" id="upTargetGrid"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════ КЕЙСЫ ═══════════════ -->
+    <section class="page" id="page-cases">
+      <div class="case-list" id="caseList"></div>
+
+      <div class="case-open hidden" id="caseOpen">
+        <button class="btn btn-ghost back" id="caseBack">← Все кейсы</button>
+        <h2 id="caseTitle"></h2>
+        <div id="roulettes"></div>
+        <div class="case-actions">
+          <div class="qty" id="caseQty">
+            <span>Кол-во:</span>
+            <button data-q="1" class="active">1</button>
+            <button data-q="2">2</button>
+            <button data-q="3">3</button>
+            <button data-q="5">5</button>
+          </div>
+          <button class="btn btn-primary btn-big" id="caseOpenBtn">Открыть</button>
+        </div>
+        <div class="case-drops hidden" id="caseDrops"></div>
+        <h3 class="sub">Содержимое кейса</h3>
+        <div class="grid" id="caseContents"></div>
+      </div>
+    </section>
+
+    <!-- ═══════════════ РЫНОК ═══════════════ -->
+    <section class="page" id="page-market">
+      <div class="toolbar">
+        <input type="search" placeholder="Поиск по названию…" id="mkSearch">
+        <select id="mkCat"><option value="">Все категории</option></select>
+        <select id="mkRarity"><option value="">Любая редкость</option></select>
+        <select id="mkSort">
+          <option value="asc">Цена ↑</option>
+          <option value="desc">Цена ↓</option>
+          <option value="name">По названию</option>
+        </select>
+        <label class="chk"><input type="checkbox" id="mkAfford"> Хватает денег</label>
+      </div>
+      <div class="grid" id="mkGrid"></div>
+    </section>
+
+    <!-- ═══════════════ ИНВЕНТАРЬ ═══════════════ -->
+    <section class="page" id="page-inventory">
+      <div class="toolbar">
+        <div class="inv-summary">
+          <span>Предметов: <b id="invTotalCount">0</b></span>
+          <span>Стоимость: <b id="invTotalValue">0</b> ◆</span>
+        </div>
+        <input type="search" placeholder="Поиск…" id="invSearch">
+        <select id="invSort">
+          <option value="new">Сначала новые</option>
+          <option value="desc">Дороже</option>
+          <option value="asc">Дешевле</option>
+        </select>
+        <button class="btn btn-ghost" id="invSelectMode">Выбрать</button>
+        <button class="btn btn-danger hidden" id="invSellSelected">Продать выбранное</button>
+        <button class="btn btn-danger" id="invSellAll">Продать всё</button>
+      </div>
+      <div class="grid" id="invGrid"></div>
+      <div class="empty hidden" id="invEmpty">
+        <div class="empty-icon">🎒</div>
+        <p>Инвентарь пуст. Купите что-нибудь на <a href="#market">рынке</a> или откройте <a href="#cases">кейс</a>.</p>
+      </div>
+    </section>
+
+    <!-- ═══════════════ ПРОФИЛЬ ═══════════════ -->
+    <section class="page" id="page-profile">
+      <div class="profile-grid">
+        <div class="panel">
+          <h3>Статистика</h3>
+          <div class="stats" id="stats"></div>
+        </div>
+        <div class="panel">
+          <h3>История</h3>
+          <div class="history" id="history"></div>
+        </div>
+        <div class="panel">
+          <h3>Честная игра (Provably Fair)</h3>
+          <p class="muted">Результат каждого апгрейда и кейса вычисляется заранее:
+            <code>sha256(серверный_сид:клиентский_сид:номер)</code>. Хеш серверного сида виден до игры,
+            а сам сид раскрывается после смены — любую ставку можно перепроверить.</p>
+          <div class="fair-row"><span>Хеш серверного сида</span><code id="fairHash"></code></div>
+          <label class="fair-row"><span>Клиентский сид</span>
+            <input type="text" id="fairClient" maxlength="64"></label>
+          <div class="fair-row"><span>Номер ставки (nonce)</span><code id="fairNonce">0</code></div>
+          <button class="btn btn-ghost" id="fairRotate">Сменить сид и раскрыть текущий</button>
+          <div id="fairRevealed" class="fair-revealed"></div>
+
+          <h4>Проверить ставку</h4>
+          <div class="verify">
+            <input type="text" id="vServer" placeholder="Серверный сид">
+            <input type="text" id="vClient" placeholder="Клиентский сид">
+            <input type="number" id="vNonce" placeholder="Nonce" min="0">
+            <input type="number" id="vChance" placeholder="Шанс, %" min="1" max="95" step="0.01">
+            <button class="btn btn-ghost" id="vBtn">Проверить</button>
+          </div>
+          <div id="vResult" class="muted"></div>
+        </div>
+        <div class="panel">
+          <h3>Настройки</h3>
+          <button class="btn btn-ghost" id="creditBtn">Получить пособие (если всё проиграл)</button>
+          <p class="muted" id="creditInfo"></p>
+          <button class="btn btn-danger" id="resetBtn">Сбросить весь прогресс</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <b>Это симулятор.</b> Все монеты и предметы виртуальные, их нельзя купить, продать или вывести.
+    Реальные деньги не принимаются и не выплачиваются. Названия скинов — пародийные.
+  </footer>
+
+  <!-- Модальное окно результата -->
+  <div class="modal hidden" id="modal" role="dialog" aria-modal="true">
+    <div class="modal-box" id="modalBox"></div>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
