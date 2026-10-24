@@ -2,393 +2,72 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>UPGRADER SIM — симулятор апгрейда скинов CS2</title>
-  <meta name="description" content="Браузерный симулятор апгрейда скинов CS2: колесо шанса, кейсы, рынок. Только виртуальные монеты.">
-  <meta name="theme-color" content="#121212">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><rect width='40' height='40' rx='9' fill='%23161616'/><path d='M4 20 20 8l16 12v6L20 14 4 26z' fill='%23ffd200'/><path d='M8 30 20 21l12 9v5L20 26 8 35z' fill='%23a88a00'/></svg>">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&display=swap">
-  <link rel="stylesheet" href="css/style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>PC BUILD SIM — 3D-симулятор сборки ПК в браузере</title>
+  <meta name="description" content="Собирайте, чините и апгрейдите компьютеры в 3D прямо в браузере. Бесплатно, без установки.">
+  <meta name="theme-color" content="#11151b">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='7' y='2' width='18' height='28' rx='3' fill='%23222'/%3E%3Crect x='10' y='6' width='12' height='9' fill='%23ffcc33'/%3E%3Ccircle cx='16' cy='22' r='4' fill='%233cf'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div id="view"></div>
 
-  <!-- ═══════════ ШАПКА ═══════════ -->
-  <header class="topbar">
-    <a class="logo" href="#upgrade" aria-label="На главную">
-      <svg class="logo-mark" viewBox="0 0 40 34" aria-hidden="true">
-        <path d="M0 16 20 2l20 14v8L20 10 0 24z" fill="#ffd200"/>
-        <path d="M5 28 20 17.5 35 28v6L20 23.5 5 34z" fill="#a88a00"/>
-      </svg>
-      <span class="logo-text">UPGRADER<sup>SIM</sup></span>
-    </a>
-
-    <div class="counters">
-      <div class="counter">
-        <span class="c-label">Онлайн</span>
-        <span class="c-val"><svg viewBox="0 0 24 24" class="ico-yellow"><path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm7 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM9 13c-3.3 0-7 1.7-7 4v2h14v-2c0-2.3-3.7-4-7-4zm7 0c-.5 0-1 0-1.6.1 1.6.9 2.6 2.2 2.6 3.9v2h5v-2c0-2.2-3.4-4-6-4z"/></svg><b id="cOnline">5 536</b></span>
-      </div>
-      <div class="counter">
-        <span class="c-label">Апгрейдов</span>
-        <span class="c-val"><svg viewBox="0 0 40 34" class="ico-yellow"><path d="M0 16 20 2l20 14v8L20 10 0 24z"/><path d="M5 28 20 17.5 35 28v6L20 23.5 5 34z" opacity=".6"/></svg><b id="cUpgrades">553 013 936</b></span>
-      </div>
-      <div class="counter">
-        <span class="c-label">Кейсов</span>
-        <span class="c-val"><svg viewBox="0 0 24 24" class="ico-yellow"><path d="M3 7h18v13H3zM7 4h10v3H7zm3 7v3h4v-3z"/></svg><b id="cCases">462 065</b></span>
-      </div>
+  <header class="top">
+    <div class="logo"><span class="logo-ico">🖥️</span><span>PC BUILD <b>SIM</b></span></div>
+    <div class="stats">
+      <div class="stat"><span class="s-l">Баланс</span><span class="s-v money" id="money">$0</span></div>
+      <div class="stat"><span class="s-l" id="day">День 1</span>
+        <span class="s-v lvl">⭐ <span id="lvl">1</span>
+          <span class="xp"><span class="xp-bar"><span id="xpFill"></span></span><span class="xp-t" id="xpText"></span></span>
+        </span></div>
     </div>
-
-    <nav class="nav" id="nav">
-      <a href="#upgrade"   data-page="upgrade">Upgrade</a>
-      <a href="#cases"     data-page="cases">Кейсы</a>
-      <a href="#market"    data-page="market">Рынок</a>
-      <a href="#inventory" data-page="inventory">Инвентарь <span class="badge" id="invCount">0</span></a>
-      <a href="#profile"   data-page="profile">Профиль</a>
+    <nav class="top-btns">
+      <button class="tb" id="btnMail" title="Почта">📧<span class="tb-t">Почта</span><span class="badge" id="mailCount">0</span></button>
+      <button class="tb" id="btnShop" title="Магазин">🛒<span class="tb-t">Магазин</span></button>
+      <button class="tb" id="btnSound" title="Звук">🔊</button>
+      <button class="tb" id="btnMenu" title="Меню">☰</button>
     </nav>
-
-    <div class="top-right">
-      <a class="round-btn gh-btn" href="https://github.com/S4rgeant1k/WebGames" target="_blank" rel="noopener" title="Вернуться на GitHub">
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
-      </a>
-      <div class="balance-box" title="Баланс (виртуальные монеты)">
-        <span class="coin"></span>
-        <span id="balance">0</span>
-      </div>
-      <button class="btn btn-yellow btn-daily" id="dailyBtn" title="Ежедневный бонус">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20 7h-2.2A3 3 0 0 0 12 3.8 3 3 0 0 0 6.2 7H4a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1zM15 5a1 1 0 1 1 0 2h-2a2 2 0 0 1 2-2zM9 5a2 2 0 0 1 2 2H9a1 1 0 1 1 0-2zm2 15H7v-8h4zm0-10H5V9h6zm6 10h-4v-8h4zm2-10h-6V9h6z"/></svg>
-        <span id="dailyLabel">Бонус</span>
-      </button>
-      <button class="round-btn" id="soundBtn" title="Звук"></button>
-      <a class="avatar" href="#profile" title="Профиль" id="topAvatar"></a>
-    </div>
   </header>
 
-  <div class="layout">
-    <!-- ═══════════ ЛЕНТА СЛЕВА ═══════════ -->
-    <aside class="sidebar">
-      <a class="live-banner" href="#cases">
-        <span class="lb-text"><b>UPGRADE</b><b class="yellow">LIVE</b></span>
-        <span class="lb-big">LIVE</span>
-      </a>
-      <div class="live-top" id="liveTop"></div>
-      <div class="feed" id="feed" aria-label="Последние апгрейды"></div>
-    </aside>
+  <aside class="panel left" id="jobPanel">
+    <div class="p-head"><span id="jobTitle">Заказ</span></div>
+    <div class="p-body" id="jobBody"></div>
+  </aside>
 
-    <main id="app">
-      <!-- ═══════════════ АПГРЕЙД ═══════════════ -->
-      <section class="page" id="page-upgrade">
-        <div class="up-head">
-          <div class="up-tools">
-            <button class="tool" id="infoBtn" title="Как играть">
-              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-6h2zm0-8h-2V7h2z"/></svg>
-            </button>
-            <button class="tool" id="soundTool" title="Звук"></button>
-            <button class="tool" id="fastTool" title="Быстрая прокрутка">
-              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>
-            </button>
-          </div>
-          <div class="up-title">
-            <svg viewBox="0 0 40 34"><path d="M0 16 20 2l20 14v8L20 10 0 24z" fill="#ffd200"/><path d="M5 28 20 17.5 35 28v6L20 23.5 5 34z" fill="#a88a00"/></svg>
-            UPGRADER
-          </div>
-          <div class="up-tools-spacer"></div>
-        </div>
+  <aside class="panel right" id="invPanel">
+    <div class="p-head">📦 Инвентарь <span class="count" id="invCount">0</span></div>
+    <div class="inv-tabs" id="invTabs"></div>
+    <div class="inv-list" id="invList"></div>
+    <div class="inv-detail hidden" id="invDetail"></div>
+  </aside>
 
-        <div class="up-stage">
-          <div class="up-panel" id="stakeCard"><div class="up-panel-body" id="stakeBody"></div></div>
+  <div class="hint hidden" id="hint"></div>
 
-          <div class="wheel-wrap">
-            <div class="wheel" id="wheel">
-              <svg viewBox="0 0 300 300" class="wheel-svg" aria-hidden="true">
-                <defs>
-                  <linearGradient id="arcGrad" gradientUnits="userSpaceOnUse" x1="0" y1="90" x2="0" y2="290">
-                    <stop offset="0%" stop-color="#ffe14d"/>
-                    <stop offset="45%" stop-color="#ffc400"/>
-                    <stop offset="80%" stop-color="#ff8a00"/>
-                    <stop offset="100%" stop-color="#ff4d1a"/>
-                  </linearGradient>
-                  <radialGradient id="innerGrad" cx="50%" cy="40%" r="60%">
-                    <stop offset="0%" stop-color="#262626"/>
-                    <stop offset="100%" stop-color="#161616"/>
-                  </radialGradient>
-                </defs>
-                <circle cx="150" cy="150" r="144" class="w-outer"/>
-                <path id="wheelSectorOuter" class="w-sector-outer" d=""/>
-                <g id="wheelTicks" class="w-ticks"></g>
-                <circle cx="150" cy="150" r="112" class="w-track"/>
-                <path id="wheelSector" class="w-sector" d=""/>
-                <circle cx="150" cy="150" r="94" class="w-inner"/>
-              </svg>
-              <span class="w-label w-top">100%</span>
-              <span class="w-label w-left">50%</span>
-              <span class="w-label w-right">50%</span>
-              <div class="pointer" id="pointer"><div class="pointer-arrow"></div></div>
-              <div class="wheel-center" id="wheelCenter"></div>
-            </div>
-          </div>
-
-          <div class="up-panel" id="targetCard"><div class="up-panel-body" id="targetBody"></div></div>
-        </div>
-
-        <div class="up-controls">
-          <div class="bal-slider">
-            <div class="bs-top">
-              <span>Сумма баланса:</span>
-              <span class="bs-val"><b id="stakeBalanceLabel">0</b> <span class="coin"></span> <small>(max <span id="stakeBalanceMax">0</span>)</small></span>
-            </div>
-            <input type="range" id="stakeBalance" min="0" max="0" step="1" value="0" aria-label="Сумма баланса">
-          </div>
-          <button class="btn-upgrade" id="upgradeBtn" disabled>
-            <svg viewBox="0 0 40 34" aria-hidden="true"><path d="M0 16 20 2l20 14v8L20 10 0 24z" fill="currentColor"/><path d="M5 28 20 17.5 35 28v6L20 23.5 5 34z" fill="currentColor" opacity=".55"/></svg>
-            <span id="upgradeLabel">Улучшить</span>
-          </button>
-          <div class="quick" id="multButtons">
-            <button data-mult="2">x2</button>
-            <button data-mult="3">x3</button>
-            <button data-mult="4">x4</button>
-            <button data-chance="60" class="q-60">60%</button>
-            <button data-chance="70" class="q-70">70%</button>
-            <button data-chance="80" class="q-80">80%</button>
-          </div>
-        </div>
-
-        <div class="pickers">
-          <div class="picker">
-            <div class="picker-head">
-              <div class="ph-tabs">
-                <button class="ph-tab active" title="Мои скины">
-                  <svg viewBox="0 0 24 24"><path fill="currentColor" d="M21 3c-5 1-9.5 4-12.6 8.7L7 10.3 5.6 11.7l1.6 1.6L3 17.5 6.5 21l4.2-4.2 1.6 1.6 1.4-1.4-1.4-1.4C17 12.5 20 8 21 3z"/></svg>
-                </button>
-                <a class="ph-tab" href="#market" title="Купить на рынке">
-                  <svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16l1 5a3 3 0 0 1-5 2.2A3 3 0 0 1 12 12a3 3 0 0 1-4-.8A3 3 0 0 1 3 9zm1 9.5V20h14v-6.5a5 5 0 0 1-3 0V18H8v-4.5a5 5 0 0 1-3 0z"/></svg>
-                </a>
-              </div>
-              <h3>Мой инвентарь</h3>
-              <input type="search" placeholder="Поиск…" id="upInvSearch" class="ph-search">
-            </div>
-            <div class="grid grid-sm" id="upInvGrid"></div>
-          </div>
-          <div class="picker">
-            <div class="picker-head">
-              <h3><svg viewBox="0 0 40 34" class="h-chev"><path d="M0 16 20 2l20 14v8L20 10 0 24z" fill="#ffd200"/></svg>Прокачать до</h3>
-            </div>
-            <div class="filter-row">
-              <button class="sort-btn" id="upTargetSort" data-dir="asc" title="Сортировка по цене">
-                <svg viewBox="0 0 24 24"><path fill="currentColor" d="M7 3 3 8h3v13h2V8h3zm10 18 4-5h-3V3h-2v13h-3z"/></svg>
-              </button>
-              <input type="search" placeholder="Название" id="upTargetSearch">
-              <div class="price-range">
-                <label><span class="coin"></span><input type="number" id="upPriceFrom" placeholder="от" min="0" inputmode="numeric"></label>
-                <label><span class="coin"></span><input type="number" id="upPriceTo" placeholder="до" min="0" inputmode="numeric"></label>
-              </div>
-            </div>
-            <div class="grid grid-sm" id="upTargetGrid"></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ═══════════════ КЕЙСЫ ═══════════════ -->
-      <section class="page" id="page-cases">
-        <h1 class="page-title">Кейсы</h1>
-        <div class="case-list" id="caseList"></div>
-
-        <div class="case-open hidden" id="caseOpen">
-          <button class="btn btn-dark back" id="caseBack">← Все кейсы</button>
-          <h2 id="caseTitle"></h2>
-          <div id="roulettes"></div>
-          <div class="case-actions">
-            <div class="qty" id="caseQty">
-              <span>Кол-во:</span>
-              <button data-q="1" class="active">1</button>
-              <button data-q="2">2</button>
-              <button data-q="3">3</button>
-              <button data-q="5">5</button>
-            </div>
-            <button class="btn-upgrade btn-case" id="caseOpenBtn">Открыть</button>
-          </div>
-          <div class="case-drops hidden" id="caseDrops"></div>
-          <h3 class="sub">Содержимое кейса</h3>
-          <div class="grid" id="caseContents"></div>
-        </div>
-      </section>
-
-      <!-- ═══════════════ РЫНОК ═══════════════ -->
-      <section class="page" id="page-market">
-        <h1 class="page-title">Рынок</h1>
-        <div class="toolbar">
-          <input type="search" placeholder="Поиск по названию…" id="mkSearch">
-          <select id="mkCat"><option value="">Все категории</option></select>
-          <select id="mkRarity"><option value="">Любая редкость</option></select>
-          <select id="mkSort">
-            <option value="asc">Цена ↑</option>
-            <option value="desc">Цена ↓</option>
-            <option value="name">По названию</option>
-          </select>
-          <label class="chk"><input type="checkbox" id="mkAfford"> Хватает денег</label>
-        </div>
-        <div class="grid" id="mkGrid"></div>
-      </section>
-
-      <!-- ═══════════════ ИНВЕНТАРЬ ═══════════════ -->
-      <section class="page" id="page-inventory">
-        <h1 class="page-title">Инвентарь</h1>
-        <div class="toolbar">
-          <div class="inv-summary">
-            <span>Предметов: <b id="invTotalCount">0</b></span>
-            <span>Стоимость: <b id="invTotalValue">0</b> <span class="coin"></span></span>
-          </div>
-          <input type="search" placeholder="Поиск…" id="invSearch">
-          <select id="invSort">
-            <option value="new">Сначала новые</option>
-            <option value="desc">Дороже</option>
-            <option value="asc">Дешевле</option>
-          </select>
-          <button class="btn btn-dark" id="invSelectMode">Выбрать</button>
-          <button class="btn btn-yellow hidden" id="invSellSelected">Продать выбранное</button>
-          <button class="btn btn-outline" id="invSellAll">Продать все</button>
-        </div>
-        <div class="grid" id="invGrid"></div>
-        <div class="empty hidden" id="invEmpty">
-          <p>У вас пока нет предметов</p>
-          <p class="muted">Купите что-нибудь на <a href="#market">рынке</a> или откройте <a href="#cases">кейс</a>.</p>
-        </div>
-      </section>
-
-      <!-- ═══════════════ ПРОФИЛЬ ═══════════════ -->
-      <section class="page" id="page-profile">
-        <div class="pf-shell">
-          <div class="pf-top">
-            <div class="pf-card pf-user">
-              <div class="pf-user-row">
-                <div class="pf-avatar" id="pfAvatar"></div>
-                <div>
-                  <div class="pf-name" id="pfName">Игрок</div>
-                  <div class="pf-id-row"><span class="pf-id" id="pfId">ID 000000</span>
-                    <button class="mini-btn" id="pfEditName" title="Сменить ник">
-                      <svg viewBox="0 0 24 24"><path fill="currentColor" d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3h-4l-.4 2.7a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1L11 21h4l.4-2.7c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>
-                    </button>
-                    <button class="mini-btn" id="pfReset" title="Сбросить прогресс">
-                      <svg viewBox="0 0 24 24"><path fill="currentColor" d="M10 3H4a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h6v-2H5V5h5zm6.6 4.4L15.2 8.8l2.2 2.2H9v2h8.4l-2.2 2.2 1.4 1.4L21.2 12z"/></svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div class="pf-line">
-                <div class="pf-line-ico">
-                  <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 22a2.5 2.5 0 0 0 2.5-2.5h-5A2.5 2.5 0 0 0 12 22zm7-6V11a7 7 0 0 0-5-6.7V3a2 2 0 0 0-4 0v1.3A7 7 0 0 0 5 11v5l-2 2v1h18v-1z"/></svg>
-                </div>
-                <div class="pf-line-text"><b>Ежедневный бонус</b><span id="pfDailyInfo">Серия: 0 дней</span></div>
-              </div>
-              <button class="btn btn-dark btn-wide" id="creditBtn">Получить пособие</button>
-              <div class="muted small" id="creditInfo"></div>
-            </div>
-
-            <div class="pf-card pf-balance">
-              <div class="pf-card-title">Баланс <svg viewBox="0 0 24 24" class="pf-db"><path fill="currentColor" d="M12 3C7 3 3 4.6 3 6.5v11C3 19.4 7 21 12 21s9-1.6 9-3.5v-11C21 4.6 17 3 12 3zm0 2c4.4 0 7 1.3 7 1.5S16.4 8 12 8 5 6.7 5 6.5 7.6 5 12 5z"/></svg></div>
-              <div class="pf-big"><span id="pfBalance">0</span> <span class="coin coin-lg"></span></div>
-              <a class="pf-link" href="#" id="pfHistoryLink">История игр ›</a>
-              <div class="promo">
-                <span class="promo-ico"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M3 6h18v4a2 2 0 0 0 0 4v4H3v-4a2 2 0 0 0 0-4zm6 2v2h2V8zm0 4v2h2v-2zm0 4v2h2v-2z"/></svg></span>
-                <input type="text" id="promoInput" placeholder="Введите купон" maxlength="24" autocomplete="off">
-                <button class="btn btn-dark" id="promoBtn">Применить</button>
-              </div>
-              <button class="btn btn-yellow btn-wide btn-tall" id="pfDailyBtn">
-                <svg viewBox="0 0 24 24"><path fill="currentColor" d="M20 7h-2.2A3 3 0 0 0 12 3.8 3 3 0 0 0 6.2 7H4a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1z"/></svg>
-                <span id="pfDailyLabel">Забрать бонус</span>
-              </button>
-            </div>
-
-            <div class="pf-right">
-              <div class="pf-card pf-best" id="pfBest"></div>
-              <div class="pf-mini-row">
-                <div class="pf-card pf-mini pf-mini-tall">
-                  <div class="pf-mini-title">Инвентарь</div>
-                  <div class="pf-mini-sub"><span id="pfInvCount">0</span> предметов</div>
-                  <div class="pf-mini-val"><span id="pfInvValue">0</span> <span class="coin"></span></div>
-                </div>
-                <div class="pf-mini-col">
-                  <div class="pf-card pf-mini"><span>Апгрейдов</span><b id="pfUpgrades">0</b><svg viewBox="0 0 40 34" class="ico-yellow"><path d="M0 16 20 2l20 14v8L20 10 0 24z"/><path d="M5 28 20 17.5 35 28v6L20 23.5 5 34z" opacity=".6"/></svg></div>
-                  <div class="pf-card pf-mini"><span>Кейсов</span><b id="pfCases">0</b><svg viewBox="0 0 24 24" class="ico-yellow"><path d="M3 7h18v13H3zM7 4h10v3H7zm3 7v3h4v-3z"/></svg></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="pf-tabs-wrap">
-          <div class="pf-tabs" id="pfTabs">
-            <button data-tab="history" class="active">
-              <svg viewBox="0 0 40 34"><path d="M0 16 20 2l20 14v8L20 10 0 24z" fill="currentColor"/></svg> История игр</button>
-            <button data-tab="stats">
-              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 20V10h3v10zm6.5 0V4h3v16zM17 20v-7h3v7z"/></svg> Статистика</button>
-            <button data-tab="fair">
-              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2 4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5zm-1.4 14L7 12.4 8.4 11l2.2 2.2 5-5L17 9.6z"/></svg> Честная игра</button>
-          </div>
-
-          <div class="pf-tab" id="tab-history"><div class="history" id="history"></div></div>
-
-          <div class="pf-tab hidden" id="tab-stats"><div class="stats" id="stats"></div></div>
-
-          <div class="pf-tab hidden" id="tab-fair">
-            <p class="muted">Результат каждого апгрейда и кейса вычисляется заранее:
-              <code>sha256(серверный_сид:клиентский_сид:номер)</code>. Хеш серверного сида виден до игры,
-              а сам сид раскрывается после смены — любую ставку можно перепроверить.</p>
-            <div class="fair-grid">
-              <div>
-                <div class="fair-row"><span>Хеш серверного сида</span><code id="fairHash"></code></div>
-                <label class="fair-row"><span>Клиентский сид</span><input type="text" id="fairClient" maxlength="64"></label>
-                <div class="fair-row"><span>Номер ставки (nonce)</span><code id="fairNonce">0</code></div>
-                <button class="btn btn-dark" id="fairRotate">Сменить сид и раскрыть текущий</button>
-                <div id="fairRevealed" class="fair-revealed"></div>
-              </div>
-              <div>
-                <h4>Проверить ставку</h4>
-                <div class="verify">
-                  <input type="text" id="vServer" placeholder="Серверный сид">
-                  <input type="text" id="vClient" placeholder="Клиентский сид">
-                  <input type="number" id="vNonce" placeholder="Nonce" min="0">
-                  <input type="number" id="vChance" placeholder="Шанс, %" min="1" max="95" step="0.01">
-                  <button class="btn btn-yellow" id="vBtn">Проверить</button>
-                </div>
-                <div id="vResult" class="muted"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-    </main>
+  <div class="actionbar">
+    <button class="ab" id="btnPower">⏻ Включить</button>
+    <button class="ab" id="btnBench" disabled>📊 Тест</button>
+    <button class="ab" id="btnCables">🔌 Кабели</button>
+    <button class="ab" id="btnDust">💨 Продувка</button>
+    <button class="ab small" id="btnScreen" title="Посмотреть на монитор">🖥</button>
+    <button class="ab small" id="btnCam" title="Вернуть камеру">🎥</button>
   </div>
 
-  <footer class="footer">
-    <div class="footer-inner">
-      <a class="logo logo-sm" href="#upgrade">
-        <svg class="logo-mark" viewBox="0 0 40 34" aria-hidden="true"><path d="M0 16 20 2l20 14v8L20 10 0 24z" fill="#ffd200"/><path d="M5 28 20 17.5 35 28v6L20 23.5 5 34z" fill="#a88a00"/></svg>
-        <span class="logo-text">UPGRADER<sup>SIM</sup></span>
-      </a>
-      <div class="footer-text">
-        <b>Это симулятор.</b> Все монеты и предметы виртуальные — их нельзя купить, продать или вывести.
-        Реальные деньги не принимаются и не выплачиваются.<br>
-        Изображения и названия скинов © Valve Corporation, загружаются с серверов Steam. Проект фанатский и не связан с Valve.
-      </div>
-      <a class="btn btn-dark gh-footer" href="https://github.com/S4rgeant1k/WebGames" target="_blank" rel="noopener">
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
-        Вернуться на GitHub
-      </a>
-    </div>
-  </footer>
-
-  <!-- Плашка «вернуться на GitHub» -->
-  <a class="gh-float" href="https://github.com/S4rgeant1k/WebGames" target="_blank" rel="noopener" title="Исходный код игры на GitHub">
-    <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
-    <span>← Вернуться на GitHub</span>
-  </a>
-
-  <div class="modal hidden" id="modal" role="dialog" aria-modal="true">
-    <div class="modal-box" id="modalBox"></div>
+  <div class="mob-tgls">
+    <button id="tglJob">📋 Заказ</button>
+    <button id="tglInv">📦 Инвентарь</button>
   </div>
+
+  <div class="tooltip hidden" id="tooltip"></div>
+  <div class="ctx hidden" id="ctx"></div>
+  <div class="modal hidden" id="modal"><div class="modal-box" id="modalBox"></div></div>
   <div class="toasts" id="toasts"></div>
 
-  <script type="module" src="js/main.js"></script>
+  <a class="gh-float" href="https://github.com/S4rgeant1k/WebGames" title="Вернуться на страницу проекта на GitHub">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+    <span>← GitHub</span>
+  </a>
+
+  <noscript><p style="color:#fff;padding:40px">Для игры нужен JavaScript.</p></noscript>
+  <script type="module" src="assets/game.js"></script>
 </body>
 </html>

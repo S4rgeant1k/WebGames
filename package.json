@@ -1,13 +1,17 @@
 {
-  "name": "webgames-upgrader-sim",
+  "name": "webgames-pc-build-sim",
   "version": "1.0.0",
   "private": true,
-  "description": "Браузерный симулятор апгрейда скинов (виртуальная валюта)",
+  "description": "Браузерный 3D-симулятор сборки ПК",
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test tests/logic.test.mjs",
-    "build": "node scripts/build-single.mjs"
+    "build": "esbuild src/main.js --bundle --minify --format=esm --target=es2020 --outfile=assets/game.js",
+    "watch": "esbuild src/main.js --bundle --format=esm --target=es2020 --outfile=assets/game.js --watch",
+    "test": "node --test tests/logic.test.mjs"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
   },
   "devDependencies": {
     "esbuild": "^0.24.2"
