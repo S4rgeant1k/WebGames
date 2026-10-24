@@ -575,3 +575,15 @@ img.skin-img { object-fit: contain; user-select: none; -webkit-user-drag: none; 
 .lb-text { top: 12px; }
 .ph-search { min-width: 0; flex: 0 1 160px; }
 @media (max-width: 600px) { .picker-head { flex-wrap: wrap; } .ph-search { flex: 1 1 100%; } }
+
+/* строки сетки = высота карточки (новые Chrome сжимали строки в прокручиваемом списке) */
+.grid, .stake-multi { grid-auto-rows: max-content; }
+.card { min-height: max-content; }
+.roulette-track .card { min-height: 0; }
+/* быстрые кнопки всегда в одну строку */
+.quick { flex-wrap: nowrap; }
+.quick button { min-width: 0; flex: 0 1 50px; padding: 0 4px; }
+/* пополнение при нулевом балансе */
+.topup { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 300px; margin-top: 18px; position: relative; z-index: 2; }
+.topup .btn { white-space: normal; height: auto; min-height: 40px; padding: 8px 12px; text-align: center; }
+@media (max-width: 600px) { .quick { flex-wrap: wrap; } }
