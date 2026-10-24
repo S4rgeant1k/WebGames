@@ -28,4 +28,4 @@ createServer(async (req, res) => {
   } catch {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Не найдено');
   }
-}).listen(PORT, HOST, () => console.log(`UPGRADER SIM: http://${HOST}:${PORT}`));
+}).listen(PORT, HOST, () => console.log(`PC BUILD SIM: http://${HOST}:${PORT}`));

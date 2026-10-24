@@ -1,125 +1,150 @@
-// Тесты игровой логики: npm test
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash, randomBytes } from 'node:crypto';
-
-import { ITEMS, ITEM_BY_ID, CASES, RARITY_BY_ID, CATEGORIES, CONFIG } from '../js/data.js';
+import { PART, PARTS } from '../src/parts.js';
 import {
-  chanceFor, resolveUpgrade, hashToInt, pickFromPool,
-  caseExpectedValue, upgradeTargets, consolationPrize, fmt
-} from '../js/economy.js';
-import { sha256Hex, betString } from '../js/fair.js';
+  emptyBuild, install, remove, canInstall, canRemove, connectCable, cableIds, powerOn, benchmark,
+  slotsForItem, ramTotal, buildPrice, powerDraw
+} from '../src/logic.js';
+import { generateJob, jobChecks, jobDone } from '../src/jobs.js';
 
-const nodeSha = s => createHash('sha256').update(s).digest('hex');
+let uid = 1;
+const it = (pid, extra = {}) => ({ uid: uid++, pid, ...extra });
 
-test('каталог: уникальные id, корректные редкости/категории/цены', () => {
-  const ids = new Set();
-  const cats = new Set(CATEGORIES.map(c => c.id));
-  for (const i of ITEMS) {
-    assert.ok(!ids.has(i.id), 'дубликат ' + i.id);
-    ids.add(i.id);
-    assert.ok(RARITY_BY_ID[i.rarity], 'редкость ' + i.id);
-    assert.ok(cats.has(i.cat), 'категория ' + i.id);
-    assert.ok(Number.isFinite(i.price) && i.price > 0, 'цена ' + i.id);
+function fullBuild(parts) {
+  const b = emptyBuild();
+  for (const [slot, pid] of Object.entries(parts)) {
+    const r = install(b, it(pid), slot);
+    assert.ok(r.ok, `${pid} → ${slot}: ${r.reason}`);
   }
+  if (b.slots.psu) for (const id of cableIds(b)) assert.ok(connectCable(b, id).ok);
+  return b;
+}
+const GOOD = { case: 'case-s2', mb: 'b450-tmh', cpu: 'r5-3600', cooler: 'cool-ak400', ram0: 'ram-8-d4', ram1: 'ram-8-d4', gpu: 'gtx1660s', m2_0: 'm2-500', psu: 'psu-550' };
+
+test('каталог: у всех деталей есть цена и уникальный id', () => {
+  assert.equal(new Set(PARTS.map(p => p.id)).size, PARTS.length);
+  for (const p of PARTS) assert.ok(p.price > 0 && p.name, p.id);
 });
 
-test('кейсы: все предметы существуют, цена ≈ EV / RTP', () => {
-  for (const c of CASES) {
-    for (const [id, w] of c.pool) {
-      assert.ok(ITEM_BY_ID[id], `${c.id}: нет предмета ${id}`);
-      assert.ok(w > 0);
+test('полная сборка включается и проходит тест', () => {
+  const b = fullBuild(GOOD);
+  const r = powerOn(b);
+  assert.ok(r.boot, r.error);
+  const bm = benchmark(b);
+  assert.ok(bm.ok && bm.score > 1000, JSON.stringify(bm));
+  assert.equal(ramTotal(b), 16);
+});
+
+test('совместимость: сокет, тип памяти, форм-фактор, длина видеокарты', () => {
+  const b = fullBuild({ case: 'case-q300l', mb: 'a320m' });
+  assert.match(canInstall(b, it('i5-10400f'), 'cpu').reason, /Сокет/);
+  assert.match(canInstall(b, it('ram-16-d5'), 'ram0').reason, /DDR4/);
+  assert.equal(canInstall(b, it('ram-8-d4'), 'ram2').ok, false, 'у mATX-платы A320 только 2 слота');
+  const b2 = fullBuild({ case: 'case-q300l' });
+  assert.match(canInstall(b2, it('b450-tmh'), 'mb').reason, /не влезет/);
+  const b3 = fullBuild({ case: 'case-s2', mb: 'b450-tmh' });
+  assert.match(canInstall(b3, it('rtx4090'), 'gpu').reason, /длиннее/);
+  assert.match(canInstall(b3, it('ssd-480'), 'hdd0').reason, /3\.5/);
+});
+
+test('порядок снятия: кулер → процессор → плата', () => {
+  const b = fullBuild(GOOD);
+  assert.equal(canRemove(b, 'mb').ok, false);
+  assert.equal(canRemove(b, 'cpu').ok, false);
+  assert.ok(remove(b, 'cooler').ok);
+  assert.ok(remove(b, 'cpu').ok);
+  assert.equal(canRemove(b, 'mb').ok, false, 'ещё стоят ОЗУ, видеокарта, M.2');
+});
+
+test('диагностика: кабели, ОЗУ, видеокарта, БП, кулер, накопитель', () => {
+  let b = fullBuild(GOOD);
+  delete b.cables.mb24;
+  assert.equal(powerOn(b).power, false);
+  b = fullBuild(GOOD); delete b.cables.gpu;
+  assert.match(powerOn(b).error, /питание видеокарты/);
+  b = fullBuild(GOOD); b.slots.ram1.broken = true;
+  assert.match(powerOn(b).error, /памяти/);
+  b = fullBuild(GOOD); b.slots.psu.broken = true;
+  assert.equal(powerOn(b).power, false);
+  b = fullBuild(GOOD); remove(b, 'cooler');
+  assert.ok(powerOn(b).shutdown);
+  b = fullBuild(GOOD); remove(b, 'm2_0');
+  assert.match(powerOn(b).error, /Загрузочное/);
+  // процессор без встроенной графики и без видеокарты
+  b = fullBuild(GOOD); remove(b, 'gpu');
+  assert.match(powerOn(b).error, /встроенной графики/);
+  // слабый БП
+  b = fullBuild({ ...GOOD, mb: 'z690-a', cpu: 'i9-13900k', ram0: 'ram-16-d5', ram1: 'ram-16-d5', gpu: 'rtx3080', psu: 'psu-400', case: 'case-h510', cooler: 'cool-nhd15' });
+  assert.ok(powerDraw(b) > 400);
+  assert.match(powerOn(b).error, /перегружен/);
+});
+
+test('призраки слотов показывают причину несовместимости', () => {
+  const b = fullBuild({ case: 'case-s2', mb: 'b450-tmh' });
+  const r = slotsForItem(b, it('i5-12400f'));
+  assert.equal(r.length, 1);
+  assert.equal(r[0].ok, false);
+  assert.equal(slotsForItem(b, it('ram-8-d4')).filter(s => s.ok).length, 4);
+});
+
+/** Лучший результат, который можно получить за указанные деньги (перебор CPU × GPU). */
+function bestScoreFor(money, caseId) {
+  const cheapest = (type, f = () => true) => PARTS.filter(p => p.type === type && f(p)).sort((a, b) => a.price - b.price)[0];
+  let best = 0;
+  const cs = PART[caseId];
+  for (const cpu of PARTS.filter(p => p.type === 'cpu')) {
+    for (const gpu of [null, ...PARTS.filter(p => p.type === 'gpu' && p.len <= cs.gpuMax)]) {
+      if (!gpu && !cpu.igpu) continue;
+      const mb = cheapest('mb', m => m.socket === cpu.socket && ['ATX', 'mATX', 'ITX'].slice(['ATX', 'mATX', 'ITX'].indexOf(cs.form)).includes(m.form));
+      if (!mb) continue;
+      const ram = cheapest('ram', r => r.ram === mb.ram && r.gb >= 8);
+      const cooler = cheapest('cooler', c => c.tdpMax >= cpu.tdp);
+      const draw = 40 + cpu.tdp * 1.1 + (gpu?.tdp || 0) + 10 + 7;
+      const psu = cheapest('psu', p => p.watt >= draw);
+      if (!psu || !cooler) continue;
+      const parts = { case: caseId, mb: mb.id, cpu: cpu.id, cooler: cooler.id, ram0: ram.id, ram1: ram.id, m2_0: 'm2-500', psu: psu.id };
+      if (gpu) parts.gpu = gpu.id;
+      const b = fullBuild(parts);
+      const price = buildPrice(b) - cs.price;
+      if (price > money) continue;
+      const r = benchmark(b);
+      if (r.ok) best = Math.max(best, r.score);
     }
-    const rtp = caseExpectedValue(c.id) / c.price;
-    assert.ok(rtp > 0.75 && rtp < 1.0, `${c.id}: RTP ${rtp.toFixed(3)} вне диапазона`);
+  }
+  return best;
+}
+
+test('заказы «сборка» выполнимы в рамках бюджета', () => {
+  for (let seed = 1; seed < 400; seed++) {
+    const j = generateJob(seed, 5, (pid, extra) => it(pid, extra));
+    if (j.type !== 'build') continue;
+    const best = bestScoreFor(j.req.budget, j.pc.slots.case.pid);
+    assert.ok(best >= j.req.score, `бюджет $${j.req.budget}: цель ${j.req.score}, максимум ${best}`);
   }
 });
 
-test('шанс: падает с ростом цели и ограничен 5..95%', () => {
-  assert.equal(chanceFor(1000, 0), 0);
-  assert.equal(chanceFor(0, 1000), 0);
-  const a = chanceFor(1000, 2000), b = chanceFor(1000, 4000);
-  assert.ok(a > b);
-  assert.ok(Math.abs(a - CONFIG.upgradeRTP * 50) < 1e-9);
-  assert.equal(chanceFor(1000, 950), CONFIG.maxChance);
-  assert.equal(chanceFor(1000, 1e9), CONFIG.minChance);
-});
-
-test('hashToInt в диапазоне 0..9999', () => {
-  for (let i = 0; i < 2000; i++) {
-    const n = hashToInt(randomBytes(32).toString('hex'));
-    assert.ok(n >= 0 && n < 10000 && Number.isInteger(n));
+test('заказы на ремонт решаются заменой неисправной детали', () => {
+  let n = 0;
+  for (let seed = 1; seed < 300 && n < 30; seed++) {
+    const j = generateJob(seed, 3, (pid, extra) => it(pid, extra));
+    if (j.type !== 'repair') continue;
+    n++;
+    const b = j.pc;
+    assert.equal(jobDone(j, b), false, 'сломанный ПК не должен засчитываться');
+    for (const [slot, item] of Object.entries(b.slots)) if (item.broken) b.slots[slot] = it(item.pid);
+    assert.ok(jobDone(j, b), JSON.stringify(jobChecks(j, b)));
   }
+  assert.ok(n > 5);
 });
 
-test('стрелка всегда попадает в нужную зону', () => {
-  for (let i = 0; i < 5000; i++) {
-    const chance = 5 + Math.random() * 90;
-    const res = resolveUpgrade(randomBytes(32).toString('hex'), chance);
-    const sector = chance / 100 * 360;
-    assert.ok(res.angle >= 0 && res.angle < 360);
-    if (res.win) assert.ok(res.angle > 0 && res.angle < sector, `win, но угол ${res.angle} вне ${sector}`);
-    else assert.ok(res.angle > sector && res.angle < 360, `lose, но угол ${res.angle} в секторе ${sector}`);
-  }
-});
-
-test('частота побед соответствует шансу (Монте-Карло)', () => {
-  for (const chance of [10, 25, 50, 80]) {
-    let wins = 0;
-    const N = 40000;
-    for (let i = 0; i < N; i++) if (resolveUpgrade(randomBytes(8).toString('hex'), chance).win) wins++;
-    const rate = wins / N * 100;
-    assert.ok(Math.abs(rate - chance) < 1.2, `шанс ${chance}%: получили ${rate.toFixed(2)}%`);
-  }
-});
-
-test('SHA-256: WebCrypto и резервная реализация совпадают с Node', async () => {
-  const s = betString('abc123', 'client', 7);
-  assert.equal(await sha256Hex(s), nodeSha(s));
-
-  // проверяем резервную реализацию, временно убрав crypto.subtle
-  const desc = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
-  Object.defineProperty(globalThis, 'crypto', { value: { getRandomValues: a => a }, configurable: true });
-  try {
-    for (const str of ['', 'a', 'Привет, мир!', 'x'.repeat(55), 'y'.repeat(64), 'z'.repeat(200)]) {
-      assert.equal(await sha256Hex(str), nodeSha(str), `fallback на «${str.slice(0, 10)}»`);
-    }
-  } finally {
-    Object.defineProperty(globalThis, 'crypto', desc);
-  }
-});
-
-test('pickFromPool учитывает веса', () => {
-  const pool = [['p250_sand_dune', 3], ['ak_47_redline', 1]];
-  let a = 0;
-  for (let i = 0; i < 20000; i++) if (pickFromPool(pool).id === 'p250_sand_dune') a++;
-  assert.ok(Math.abs(a / 20000 - 0.75) < 0.02);
-  assert.equal(pickFromPool(pool, () => 0).id, 'p250_sand_dune');
-  assert.equal(pickFromPool(pool, () => 0.9999).id, 'ak_47_redline');
-});
-
-test('цели апгрейда дороже ставки и отсортированы', () => {
-  const t = upgradeTargets(5000);
-  assert.ok(t.length > 0);
-  for (let i = 0; i < t.length; i++) {
-    assert.ok(t[i].price > 5000);
-    if (i) assert.ok(t[i].price >= t[i - 1].price);
-  }
-});
-
-test('утешительный приз: иногда есть, дешевле ставки', () => {
-  assert.equal(consolationPrize(10000, () => 0.99), null);
-  const p = consolationPrize(10000, () => 0);
-  assert.ok(p && p.price < 10000);
-});
-
-test('у всех скинов есть картинка Steam, знаменитые скины на месте', () => {
-  for (const i of ITEMS) assert.match(i.img, /^[A-Za-z0-9_-]{40,}$/, 'картинка ' + i.id);
-  for (const id of ['ak_47_redline', 'awp_dragon_lore', 'm4a4_howl', 'karambit_fade'])
-    assert.ok(ITEM_BY_ID[id], 'нет ' + id);
-});
-
-test('форматирование чисел', () => {
-  assert.equal(fmt(1234567), '1 234 567');
-  assert.equal(fmt(0), '0');
+test('чистка, апгрейды памяти и видеокарты проверяются', () => {
+  const mk = type => { for (let s = 1; s < 2000; s++) { const j = generateJob(s, 4, (pid, e) => it(pid, e)); if (j.type === type) return j; } };
+  const c = mk('clean');
+  assert.equal(jobDone(c, c.pc), false);
+  for (const item of Object.values(c.pc.slots)) item.dirty = false;
+  assert.ok(jobDone(c, c.pc));
+  const g = mk('upgrade_gpu');
+  assert.equal(jobDone(g, g.pc), false);
+  const r = mk('upgrade_ram');
+  assert.equal(jobDone(r, r.pc), false);
 });
