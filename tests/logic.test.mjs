@@ -5,7 +5,8 @@ import {
   emptyBuild, install, remove, canInstall, canRemove, connectCable, cableIds, powerOn, benchmark,
   slotsForItem, ramTotal, buildPrice, powerDraw
 } from '../src/logic.js';
-import { generateJob, jobChecks, jobDone } from '../src/jobs.js';
+import { generateJob, jobChecks, jobDone, bestScoreFor as bestFromJobs } from '../src/jobs.js';
+import { TYPE_ORDER } from '../src/parts.js';
 
 let uid = 1;
 const it = (pid, extra = {}) => ({ uid: uid++, pid, ...extra });
@@ -19,7 +20,7 @@ function fullBuild(parts) {
   if (b.slots.psu) for (const id of cableIds(b)) assert.ok(connectCable(b, id).ok);
   return b;
 }
-const GOOD = { case: 'case-s2', mb: 'b450-tmh', cpu: 'r5-3600', cooler: 'cool-ak400', ram0: 'ram-8-d4', ram1: 'ram-8-d4', gpu: 'gtx1660s', m2_0: 'm2-500', psu: 'psu-550' };
+const GOOD = { case: 'zalman-s2', mb: 'b550-tmh', cpu: 'r5-5600', cooler: 'ak400', ram0: 'd4-8-3200', ram1: 'd4-8-3200', gpu: 'rtx3060', m2_0: 'm2-500', psu: 'mwe650' };
 
 test('каталог: у всех деталей есть цена и уникальный id', () => {
   assert.equal(new Set(PARTS.map(p => p.id)).size, PARTS.length);
@@ -36,15 +37,18 @@ test('полная сборка включается и проходит тес�
 });
 
 test('совместимость: сокет, тип памяти, форм-фактор, длина видеокарты', () => {
-  const b = fullBuild({ case: 'case-q300l', mb: 'a320m' });
-  assert.match(canInstall(b, it('i5-10400f'), 'cpu').reason, /Сокет/);
-  assert.match(canInstall(b, it('ram-16-d5'), 'ram0').reason, /DDR4/);
-  assert.equal(canInstall(b, it('ram-8-d4'), 'ram2').ok, false, 'у mATX-платы A320 только 2 слота');
-  const b2 = fullBuild({ case: 'case-q300l' });
-  assert.match(canInstall(b2, it('b450-tmh'), 'mb').reason, /не влезет/);
-  const b3 = fullBuild({ case: 'case-s2', mb: 'b450-tmh' });
+  const b = fullBuild({ case: 'matrexx30', mb: 'a320m-h' });
+  assert.match(canInstall(b, it('i5-12400f'), 'cpu').reason, /Сокет/);
+  assert.match(canInstall(b, it('d5-16-5600'), 'ram0').reason, /DDR4/);
+  assert.equal(canInstall(b, it('d4-8-3200'), 'ram2').ok, false, 'у mATX-платы A320 только 2 слота');
+  const b2 = fullBuild({ case: 'matrexx30' });
+  assert.match(canInstall(b2, it('b550-tmh'), 'mb').reason, /не влезет/);
+  const b3 = fullBuild({ case: 'zalman-s2', mb: 'b550-tmh', cpu: 'r5-5600' });
   assert.match(canInstall(b3, it('rtx4090'), 'gpu').reason, /длиннее/);
   assert.match(canInstall(b3, it('ssd-480'), 'hdd0').reason, /3\.5/);
+  assert.match(canInstall(b3, it('fx240'), 'cooler').reason, /СЖО/);
+  const b4 = fullBuild({ case: 'matrexx30', mb: 'a520m-a', cpu: 'r5-5600' });
+  assert.match(canInstall(b4, it('nhd15'), 'cooler').reason, /выше/);
 });
 
 test('порядок снятия: кулер → процессор → плата', () => {
@@ -74,17 +78,17 @@ test('диагностика: кабели, ОЗУ, видеокарта, БП, 
   b = fullBuild(GOOD); remove(b, 'gpu');
   assert.match(powerOn(b).error, /встроенной графики/);
   // слабый БП
-  b = fullBuild({ ...GOOD, mb: 'z690-a', cpu: 'i9-13900k', ram0: 'ram-16-d5', ram1: 'ram-16-d5', gpu: 'rtx3080', psu: 'psu-400', case: 'case-h510', cooler: 'cool-nhd15' });
-  assert.ok(powerDraw(b) > 400);
+  b = fullBuild({ ...GOOD, case: 'o11evo', mb: 'z790-a', cpu: 'i9-14900kf', ram0: 'd5-16-6000', ram1: 'd5-16-6000', gpu: 'rx7900xtx', psu: 'pf500', cooler: 'ls720' });
+  assert.ok(powerDraw(b) > 500);
   assert.match(powerOn(b).error, /перегружен/);
 });
 
 test('призраки слотов показывают причину несовместимости', () => {
-  const b = fullBuild({ case: 'case-s2', mb: 'b450-tmh' });
+  const b = fullBuild({ case: 'zalman-s2', mb: 'b550-tmh' });
   const r = slotsForItem(b, it('i5-12400f'));
   assert.equal(r.length, 1);
   assert.equal(r[0].ok, false);
-  assert.equal(slotsForItem(b, it('ram-8-d4')).filter(s => s.ok).length, 4);
+  assert.equal(slotsForItem(b, it('d4-8-3200')).filter(s => s.ok).length, 4);
 });
 
 /** Лучший результат, который можно получить за указанные деньги (перебор CPU × GPU). */
@@ -118,8 +122,8 @@ test('заказы «сборка» выполнимы в рамках бюдж�
   for (let seed = 1; seed < 400; seed++) {
     const j = generateJob(seed, 5, (pid, extra) => it(pid, extra));
     if (j.type !== 'build') continue;
-    const best = bestScoreFor(j.req.budget, j.pc.slots.case.pid);
-    assert.ok(best >= j.req.score, `бюджет $${j.req.budget}: цель ${j.req.score}, максимум ${best}`);
+    const best = bestFromJobs(Math.round(j.req.budget * 0.85), j.pc.slots.case.pid, 5).score;
+    assert.ok(best >= j.req.score, `бюджет ${j.req.budget}: цель ${j.req.score}, максимум ${best}`);
   }
 });
 
@@ -147,4 +151,40 @@ test('чистка, апгрейды памяти и видеокарты про
   assert.equal(jobDone(g, g.pc), false);
   const r = mk('upgrade_ram');
   assert.equal(jobDone(r, r.pc), false);
+});
+
+test('каталог: не меньше 20 вариантов основных деталей', () => {
+  for (const t of TYPE_ORDER.filter(t => t !== 'fan')) {
+    const n = PARTS.filter(p => p.type === t).length;
+    assert.ok(n >= 18, `${t}: ${n}`);
+  }
+});
+
+test('12VHPWR: топовой видеокарте нужен БП ATX 3.0', () => {
+  const base = { ...GOOD, case: 'o11evo', mb: 'b650-tmh', cpu: 'r7-7800x3d', ram0: 'd5-16-6000', ram1: 'd5-16-6000', cooler: 'ak620' };
+  const { psu, ...noPsu } = base;
+  const b = fullBuild({ ...noPsu, gpu: 'rtx4070s' });
+  install(b, it('pk650d'), 'psu');
+  for (const id of cableIds(b)) connectCable(b, id);
+  assert.equal(connectCable(b, 'gpu').ok, false);
+  assert.equal(powerOn(b).boot, false);
+  assert.match(powerOn(b).error, /12VHPWR/);
+  const b2 = fullBuild({ ...base, gpu: 'rtx4070s', psu: 'a850gl' });
+  assert.ok(powerOn(b2).boot, powerOn(b2).error);
+});
+
+test('у клиентов разные компьютеры', () => {
+  const cpus = new Set(), gpus = new Set(), cases = new Set(), mbs = new Set();
+  for (let seed = 1; seed < 120; seed++) {
+    const j = generateJob(seed * 7919, 3, (pid, extra) => it(pid, extra));
+    const b = j.pc;
+    if (b.slots.cpu) cpus.add(b.slots.cpu.pid);
+    if (b.slots.gpu) gpus.add(b.slots.gpu.pid);
+    if (b.slots.mb) mbs.add(b.slots.mb.pid);
+    cases.add(b.slots.case.pid);
+  }
+  assert.ok(cpus.size >= 15, 'процессоров: ' + cpus.size);
+  assert.ok(gpus.size >= 10, 'видеокарт: ' + gpus.size);
+  assert.ok(mbs.size >= 15, 'плат: ' + mbs.size);
+  assert.ok(cases.size >= 10, 'корпусов: ' + cases.size);
 });

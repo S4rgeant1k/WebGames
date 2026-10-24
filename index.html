@@ -1,73 +1,83 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <title>PC BUILD SIM — 3D-симулятор сборки ПК в браузере</title>
-  <meta name="description" content="Собирайте, чините и апгрейдите компьютеры в 3D прямо в браузере. Бесплатно, без установки.">
-  <meta name="theme-color" content="#11151b">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='7' y='2' width='18' height='28' rx='3' fill='%23222'/%3E%3Crect x='10' y='6' width='12' height='9' fill='%23ffcc33'/%3E%3Ccircle cx='16' cy='22' r='4' fill='%233cf'/%3E%3C/svg%3E">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>PC BUILD SIM — симулятор сборки компьютеров</title>
+  <meta name="description" content="Браузерный 3D-симулятор компьютерной мастерской: ходите по мастерской, принимайте заказы, собирайте и чините ПК.">
+  <meta name="theme-color" content="#1fa9e1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231fa9e1'/%3E%3Crect x='10' y='5' width='12' height='22' rx='2' fill='%23fff'/%3E%3Ccircle cx='16' cy='10' r='2' fill='%23f39200'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="m-walk">
   <div id="view"></div>
 
-  <header class="top">
-    <div class="logo"><span class="logo-ico">🖥️</span><span>PC BUILD <b>SIM</b></span></div>
-    <div class="stats">
-      <div class="stat"><span class="s-l">Баланс</span><span class="s-v money" id="money">$0</span></div>
-      <div class="stat"><span class="s-l" id="day">День 1</span>
-        <span class="s-v lvl">⭐ <span id="lvl">1</span>
-          <span class="xp"><span class="xp-bar"><span id="xpFill"></span></span><span class="xp-t" id="xpText"></span></span>
-        </span></div>
-    </div>
-    <nav class="top-btns">
-      <button class="tb" id="btnMail" title="Почта">📧<span class="tb-t">Почта</span><span class="badge" id="mailCount">0</span></button>
-      <button class="tb" id="btnShop" title="Магазин">🛒<span class="tb-t">Магазин</span></button>
-      <button class="tb" id="btnSound" title="Звук">🔊</button>
-      <button class="tb" id="btnMenu" title="Меню">☰</button>
-    </nav>
-  </header>
+  <!-- ── HUD (ходьба) ─────────────────────────────────────── -->
+  <div id="hud">
+    <div class="hud-day" id="hudDay"></div>
+    <div class="hud-tracker" id="tracker"></div>
+    <div class="hud-stats" id="hudStats"></div>
+    <div class="crosshair" id="cross"></div>
+    <div class="prompt hidden" id="prompt"></div>
+    <div class="keys-help" id="keysHelp"></div>
+  </div>
 
-  <aside class="panel left" id="jobPanel">
-    <div class="p-head"><span id="jobTitle">Заказ</span></div>
-    <div class="p-body" id="jobBody"></div>
-  </aside>
+  <!-- ── Верстак ───────────────────────────────────────────── -->
+  <div id="buildUI">
+    <button class="exit-sq" id="btnExit" title="Отойти от верстака (Esc)"></button>
+    <div class="pc-title" id="pcTitle"></div>
+    <section class="panel job-panel" id="jobPanel">
+      <header class="panel-h"><span id="jobTitle">Заказ</span><button class="panel-min" id="jobMin" title="Свернуть"></button></header>
+      <div class="panel-b" id="jobBody"></div>
+    </section>
+    <div class="tool-hint" id="hint"></div>
+    <nav class="toolbar" id="toolbar"></nav>
+  </div>
 
-  <aside class="panel right" id="invPanel">
-    <div class="p-head">📦 Инвентарь <span class="count" id="invCount">0</span></div>
+  <!-- ── Инвентарь (верстак и склад) ───────────────────────── -->
+  <section class="panel inv-panel" id="inv">
+    <header class="panel-h"><span id="invTitle">Инвентарь</span><button class="panel-x" id="invClose" title="Закрыть"></button></header>
     <div class="inv-tabs" id="invTabs"></div>
     <div class="inv-list" id="invList"></div>
-    <div class="inv-detail hidden" id="invDetail"></div>
-  </aside>
+    <div class="inv-detail" id="invDetail"></div>
+  </section>
 
-  <div class="hint hidden" id="hint"></div>
-
-  <div class="actionbar">
-    <button class="ab" id="btnPower">⏻ Включить</button>
-    <button class="ab" id="btnBench" disabled>📊 Тест</button>
-    <button class="ab" id="btnCables">🔌 Кабели</button>
-    <button class="ab" id="btnDust">💨 Продувка</button>
-    <button class="ab small" id="btnScreen" title="Посмотреть на монитор">🖥</button>
-    <button class="ab small" id="btnCam" title="Вернуть камеру">🎥</button>
+  <!-- ── «Операционная система» компьютеров ─────────────────── -->
+  <div id="os" class="hidden">
+    <button class="exit-sq" id="osExit" title="Выйти (Esc)"></button>
+    <div class="os-screen">
+      <div class="os-desk" id="osDesk"></div>
+      <div class="os-wins" id="osWins"></div>
+      <div class="os-bar">
+        <div class="os-start">Os</div>
+        <div class="os-tabs" id="osTabs"></div>
+        <div class="os-tray" id="osTray"></div>
+      </div>
+    </div>
   </div>
 
-  <div class="mob-tgls">
-    <button id="tglJob">📋 Заказ</button>
-    <button id="tglInv">📦 Инвентарь</button>
+  <!-- ── Мобильное управление ──────────────────────────────── -->
+  <div id="joy"><div id="joyKnob"></div></div>
+  <button id="btnAct" class="act-btn"></button>
+  <button id="btnInvMob" class="mob-btn"></button>
+  <button id="btnMenuMob" class="mob-btn"></button>
+
+  <!-- ── Меню / окна ───────────────────────────────────────── -->
+  <div id="menu" class="overlay">
+    <div class="menu-box">
+      <div class="logo"><span class="logo-pc">PC</span> BUILD SIM</div>
+      <div class="menu-sub">Симулятор компьютерной мастерской</div>
+      <div class="menu-btns" id="menuBtns"></div>
+      <div class="menu-foot">Игра работает прямо в браузере и сохраняется автоматически.</div>
+    </div>
   </div>
+  <div id="modalWrap" class="overlay hidden"><div class="modal" id="modal"></div></div>
+  <div id="ctx" class="ctx hidden"></div>
+  <div id="tooltip" class="tooltip hidden"></div>
+  <div id="toasts"></div>
 
-  <div class="tooltip hidden" id="tooltip"></div>
-  <div class="ctx hidden" id="ctx"></div>
-  <div class="modal hidden" id="modal"><div class="modal-box" id="modalBox"></div></div>
-  <div class="toasts" id="toasts"></div>
+  <a class="gh-float" id="ghFloat" href="https://github.com/S4rgeant1k/WebGames" title="Вернуться на страницу GitHub"></a>
 
-  <a class="gh-float" href="https://github.com/S4rgeant1k/WebGames" title="Вернуться на страницу проекта на GitHub">
-    <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-    <span>← GitHub</span>
-  </a>
-
-  <noscript><p style="color:#fff;padding:40px">Для игры нужен JavaScript.</p></noscript>
   <script type="module" src="assets/game.js"></script>
 </body>
 </html>

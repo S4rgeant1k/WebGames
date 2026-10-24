@@ -77,6 +77,8 @@ export function canInstall(b, item, slot) {
       break;
     case 'cooler':
       if (!cpu) return { ok: false, reason: 'Сначала установите процессор' };
+      if (p.rad && (cs.rad || 0) < p.rad) return { ok: false, reason: cs.rad ? `В корпус влезает СЖО только до ${cs.rad} мм` : 'В этот корпус нельзя поставить СЖО' };
+      if (!p.rad && p.height > cs.coolerMax) return { ok: false, reason: `Кулер ${Math.round(p.height * 1000)} мм выше допустимых ${Math.round(cs.coolerMax * 1000)} мм` };
       break;
   }
   return { ok: true };
@@ -134,7 +136,7 @@ export const CABLE_LABELS = {
 
 function cablePossible(b, id) {
   if (id === 'mb24' || id === 'cpu8') return !!b.slots.mb;
-  if (id === 'gpu') return !!get(b, 'gpu')?.pins;
+  if (id === 'gpu') return !!get(b, 'gpu')?.pins && (!get(b, 'gpu').hpwr || !!get(b, 'psu')?.atx3);
   return !!b.slots[id];
 }
 
@@ -152,6 +154,7 @@ export function cableIds(b, all = false) {
 export function connectCable(b, id) {
   if (!b.slots.psu) return { ok: false, reason: 'Сначала установите блок питания' };
   if (!cableIds(b).includes(id)) return { ok: false, reason: 'Некуда подключать' };
+  if (id === 'gpu' && get(b, 'gpu').hpwr && !get(b, 'psu').atx3) return { ok: false, reason: 'У этого блока питания нет кабеля 12VHPWR — нужен БП стандарта ATX 3.0' };
   b.cables[id] = true;
   return { ok: true };
 }
@@ -207,6 +210,7 @@ export function powerOn(b) {
   if (sticks.some(s => s.broken)) return { ...res, error: 'Ошибка памяти! Одна из планок ОЗУ неисправна', beep: 'длинные повторяющиеся' };
   const gpu = get(b, 'gpu');
   if (!gpu && !cpu.igpu) return { ...res, error: 'Нет изображения: у процессора нет встроенной графики, нужна видеокарта', beep: '1 длинный, 2 коротких' };
+  if (gpu && gpu.pins && !b.cables.gpu && gpu.hpwr && !psu.atx3) return { ...res, error: 'Нет изображения: видеокарте нужен кабель 12VHPWR, а у блока питания его нет (нужен ATX 3.0)', beep: '1 длинный, 2 коротких' };
   if (gpu && gpu.pins && !b.cables.gpu) return { ...res, error: 'Нет изображения: не подключено питание видеокарты', beep: '1 длинный, 2 коротких' };
   if (gpu && b.slots.gpu.broken) return { ...res, error: 'Нет изображения. Возможно, неисправна видеокарта', beep: '1 длинный, 2 коротких' };
   res.post = true;
@@ -227,7 +231,7 @@ export function benchmark(b) {
   if (!pw.boot) return { ok: false, error: pw.error || 'Компьютер не загружается' };
   const cpu = get(b, 'cpu'), gpu = get(b, 'gpu');
   const t = temps(b);
-  const gpuPerf = gpu ? gpu.perf : 250;
+  const gpuPerf = gpu ? gpu.perf : cpu.igpu;
   const total = ramTotal(b);
   const sticks = ramSticks(b).length;
   let ramF = total < 8 ? 0.72 : total < 16 ? 0.88 : total < 32 ? 1 : 1.04;
