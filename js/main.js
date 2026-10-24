@@ -179,7 +179,7 @@ function claimDaily() {
     <p class="muted">Серия: ${streak} ${streak > 1 ? 'дня подряд' : 'день'} · за серию до +${fmt(6 * CONFIG.dailyStreakBonus)}</p>
     <div class="m-big">+ ${fmt(amount)} <span class="coin coin-lg"></span></div>
     <div class="m-actions"><button class="btn btn-yellow" data-close>Отлично</button></div>`, 'gold');
-  if (currentPage === 'profile') renderProfile();
+  if (currentPage === 'profile' || currentPage === 'upgrade') renderPage();
 }
 $('#dailyBtn').addEventListener('click', claimDaily);
 setInterval(renderDaily, 30000);
@@ -306,6 +306,26 @@ function renderStakeSlot() {
   const body = $('#stakeBody');
   const items = up.stake.map(uid => ({ uid, item: ITEM_BY_ID[invItem(uid).id] }));
   const bal = stakeBalanceValue();
+  if (!items.length && !bal && state.balance + inventoryValue() < CONFIG.demoCreditMinBalance) {
+    const cr = creditAvailable();
+    const promos = Object.keys(CONFIG.promoCodes).filter(c => !state.usedPromos.includes(c));
+    body.innerHTML = `
+      <div class="up-empty-title">Монеты закончились 😢</div>
+      <div class="up-empty-sub">Не беда — пополните баланс бесплатно</div>
+      <div class="topup">
+        <button class="btn btn-yellow btn-wide" id="tuCredit" ${cr.ok ? '' : 'disabled'}>
+          ${cr.ok ? `Получить <span class="coin"></span> ${fmt(CONFIG.demoCredit)}` : esc(cr.msg)}</button>
+        ${dailyReady() ? `<button class="btn btn-dark btn-wide" id="tuDaily">Ежедневный бонус <span class="coin"></span> ${fmt(dailyAmount().amount)}</button>` : ''}
+        ${promos.length ? `<button class="btn btn-outline btn-wide" id="tuPromo">Есть купоны: ${promos.join(', ')}</button>` : ''}
+      </div>`;
+    $('#tuCredit').addEventListener('click', claimCredit);
+    $('#tuDaily')?.addEventListener('click', claimDaily);
+    $('#tuPromo')?.addEventListener('click', () => {
+      location.hash = '#profile';
+      setTimeout(() => { $('#promoInput').value = promos[0]; $('#promoInput').focus(); }, 50);
+    });
+    return;
+  }
   if (!items.length && !bal) {
     body.innerHTML = `
       <div class="up-empty-title">Выберите предметы и/или баланс для использования</div>
@@ -1040,6 +1060,7 @@ function renderProfile() {
   const canCredit = creditAvailable();
   $('#creditBtn').disabled = !canCredit.ok;
   $('#creditInfo').textContent = canCredit.msg;
+  $('#creditBtn').textContent = `Получить пособие ${fmt(CONFIG.demoCredit)}`;
 }
 
 $('#pfTabs').addEventListener('click', e => {
@@ -1096,15 +1117,16 @@ function creditAvailable() {
   return { ok: true, msg: `Вы получите ${fmt(CONFIG.demoCredit)} монет.` };
 }
 
-$('#creditBtn').addEventListener('click', () => {
+function claimCredit() {
   if (!creditAvailable().ok) return;
   state.lastCredit = Date.now();
   changeBalance(CONFIG.demoCredit);
   pushHistory({ type: 'credit', amount: CONFIG.demoCredit });
   save(); sfx.coin();
   toast(`Начислено ${fmt(CONFIG.demoCredit)}`);
-  renderProfile();
-});
+  renderPage();
+}
+$('#creditBtn').addEventListener('click', claimCredit);
 
 $('#pfReset').addEventListener('click', () => {
   openModal(`<h2>Сбросить прогресс?</h2><p class="muted">Баланс, инвентарь, история и статистика будут удалены.</p>
