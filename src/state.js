@@ -3,27 +3,32 @@
 import { PART } from './parts.js';
 import { emptyBuild } from './logic.js';
 
-const KEY = 'pc-build-sim-save-v1';
-export const LEVEL_XP = [0, 120, 320, 650, 1100, 1800, 2800];
-export const START_MONEY = 600;
+const KEY = 'pc-build-sim-save-v2';
+export const LEVEL_XP = [0, 150, 400, 800, 1400, 2200, 3200];
+export const START_MONEY = 40000;
+export const PARK_SPOTS = 3;     // мест на стеллаже для компьютеров
+export const MAX_JOBS = 4;
 
 export function freshState(sandbox = false) {
   return {
-    v: 1,
+    v: 2,
     sandbox,
-    money: sandbox ? 1e9 : START_MONEY,
+    money: sandbox ? 1e12 : START_MONEY,
     xp: 0,
     day: 1,
     uid: 1,
-    inventory: [],          // [{ uid, pid, broken?, dirty?, client? }]
-    bench: emptyBuild(),    // сборка на столе
-    job: null,              // активный заказ
+    pcSeq: 1,
+    inventory: [],          // [{ uid, pid, broken?, dirty?, client?, tested? }]
+    pcs: [],                // [{ id, owner: 'job'|'own', jobId?, build, score?: {sig, score}, osSig? }]
+    benchPc: null,          // id ПК на верстаке
+    jobs: [],               // принятые заказы
     inbox: [],              // письма-заказы
     seedBase: Math.floor(Math.random() * 1e9),
+    seedN: 0,
     jobsDone: 0,
     earned: 0,
-    bench_score: null,      // { sig, score }
-    settings: { sound: true },
+    rep: 2.5,               // репутация, 0..5 звёзд
+    settings: { sound: true, sens: 1 },
     tutorial: true
   };
 }
@@ -35,9 +40,12 @@ export function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const d = JSON.parse(raw);
-      if (d && d.v === 1) S = Object.assign(freshState(), d);
+      if (d && d.v === 2) S = Object.assign(freshState(), d);
     }
   } catch { /* битое сохранение — начинаем заново */ }
+  // удаляем детали, которых больше нет в каталоге
+  S.inventory = S.inventory.filter(i => PART[i.pid]);
+  for (const pc of S.pcs) for (const [s, it] of Object.entries(pc.build.slots)) if (!PART[it.pid]) delete pc.build.slots[s];
   return S;
 }
 export function save() {
@@ -60,6 +68,16 @@ export function newItem(pid, extra = {}) {
   if (!PART[pid]) throw new Error('Нет детали ' + pid);
   return { uid: S.uid++, pid, ...extra };
 }
+
+export function newPC(owner, build = emptyBuild(), jobId = null) {
+  const pc = { id: 'pc' + S.pcSeq++, owner, jobId, build, score: null, osSig: null };
+  S.pcs.push(pc);
+  return pc;
+}
+export const benchPC = () => S.pcs.find(p => p.id === S.benchPc) || null;
+export const parkedPCs = () => S.pcs.filter(p => p.id !== S.benchPc);
+export const pcJob = pc => pc && pc.jobId ? S.jobs.find(j => j.id === pc.jobId) : null;
+export const jobPC = job => S.pcs.find(p => p.jobId === job.id) || null;
 
 /** «Отпечаток» сборки — чтобы понимать, что тест устарел. */
 export function buildSig(b) {

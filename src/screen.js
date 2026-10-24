@@ -59,15 +59,16 @@ export function createScreen(canvas, texture) {
 
   function drawDesktop(el) {
     const g = x.createLinearGradient(0, 0, W, H);
-    g.addColorStop(0, '#0b3d91'); g.addColorStop(1, '#1b8fd6');
+    g.addColorStop(0, '#20163a'); g.addColorStop(0.55, '#43215a'); g.addColorStop(1, '#7a2d4f');
     x.fillStyle = g; x.fillRect(0, 0, W, H);
     x.fillStyle = 'rgba(255,255,255,0.08)';
     x.beginPath(); x.ellipse(W * 0.7, H * 0.55, 380, 160, -0.4, 0, 7); x.fill();
     // иконки
-    const icons = [['💻', 'Этот компьютер'], ['📊', 'Бенчмарк'], ['🗑️', 'Корзина']];
-    icons.forEach(([ic, name], i) => {
-      sans(44, '#fff', 'normal', 'center'); x.fillText(ic, 70, 70 + i * 110);
-      sans(16, '#fff', 'normal', 'center'); x.fillText(name, 70, 112 + i * 110);
+    const icons = [['#f39200', '3DMark'], ['#1fa9e1', 'Сведения'], ['#e0453a', 'OCCT']];
+    icons.forEach(([col, name], i) => {
+      x.fillStyle = col; x.fillRect(46, 40 + i * 110, 48, 48);
+      x.fillStyle = 'rgba(255,255,255,.9)'; x.fillRect(58, 52 + i * 110, 24, 24);
+      sans(16, '#fff', 'normal', 'center'); x.fillText(name, 70, 106 + i * 110);
     });
     // окно с характеристиками
     x.fillStyle = 'rgba(20,24,32,0.92)';
@@ -81,7 +82,7 @@ export function createScreen(canvas, texture) {
     });
     // панель задач
     x.fillStyle = 'rgba(10,12,18,0.9)'; x.fillRect(0, H - 44, W, 44);
-    x.fillStyle = '#2b8cff'; x.fillRect(12, H - 36, 28, 28);
+    x.strokeStyle = '#ff5a3c'; x.lineWidth = 3; x.strokeRect(12, H - 36, 40, 28); sans(17, '#ff5a3c', 'italic 900', 'center'); x.fillText('Os', 32, H - 22);
     const d = new Date();
     sans(18, '#fff', 'normal', 'right'); x.fillText(d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }), W - 20, H - 22);
   }
@@ -131,7 +132,7 @@ export function createScreen(canvas, texture) {
     sans(26, '#ffcc33', 'bold', 'center'); x.fillText('Результат теста', W / 2, H / 2 - 125);
     sans(86, '#fff', 'bold', 'center'); x.fillText(String(st.score), W / 2, H / 2 - 30);
     sans(22, '#9fb3d1', 'normal', 'center'); x.fillText(`≈ ${st.fps} FPS в играх · CPU ${st.cpuTemp} °C · GPU ${st.gpuTemp || '—'} °C`, W / 2, H / 2 + 50);
-    if (st.throttle) { sans(20, '#ff7755', 'bold', 'center'); x.fillText('⚠ Перегрев: частоты снижены!', W / 2, H / 2 + 95); }
+    if (st.throttle) { sans(20, '#ff7755', 'bold', 'center'); x.fillText('Перегрев: частоты снижены!', W / 2, H / 2 + 95); }
   }
 
   function draw(now) {
